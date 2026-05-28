@@ -201,7 +201,29 @@ systemctl restart borderx-panel
 
 # 查看 Nginx 日志
 tail -f /var/log/nginx/access.log
+
+# 重置管理员密码（如 bcrypt 哈希损坏）
+cd /tmp && mkdir hashtool && cd hashtool && go mod init hashtool && go get golang.org/x/crypto@latest
+cat > main.go << 'GOEOF'
+package main
+import ("fmt"; "golang.org/x/crypto/bcrypt")
+func main() { h, _ := bcrypt.GenerateFromPassword([]byte("新密码"), 12); fmt.Println(string(h)) }
+GOEOF
+go run main.go
+# 将输出的哈希写入数据库：
+# echo '哈希值' > /tmp/passhash.txt
+# su - postgres -c "psql -d borderx -c \"UPDATE admins SET password_hash='\$(cat /tmp/passhash.txt)' WHERE username='admin';\""
 ```
+
+## 故障排查
+
+| 问题 | 排查 |
+|------|------|
+| 502 Bad Gateway | Panel 未运行 `systemctl status borderx-panel` |
+| 密码错误 | 哈希可能损坏，用上方命令重置 |
+| 迁移失败 | 数据库有残留表 `su - postgres -c "psql -c 'DROP DATABASE borderx; CREATE DATABASE borderx OWNER borderx;'"` |
+| 页面 404 | 刷新后正常？是 SPA 路由，直接访问路径需 Panel 支持 |
+| 安装脚本密码不匹配 | 重复运行保留旧密码，或手动同步 `/etc/borderx/config.yml` 与 DB |
 
 ## License
 
