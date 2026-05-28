@@ -43,14 +43,32 @@ info "Getting BorderX Panel..."
 mkdir -p "$INSTALL_DIR"
 
 DOWNLOAD_OK=false
+
+# Try stable Release first, then pre-release via API
+info "Looking for prebuilt binary..."
+
 RELEASE_URL="https://github.com/${REPO}/releases/latest/download/${BIN_NAME}"
 curl -fsSL "$RELEASE_URL" -o "${INSTALL_DIR}/${BIN_NAME}" 2>/dev/null && [[ -s "${INSTALL_DIR}/${BIN_NAME}" ]] && DOWNLOAD_OK=true
+
+if ! $DOWNLOAD_OK; then
+    # latest may not find pre-release; query API for any release
+    API_URL="https://api.github.com/repos/${REPO}/releases?per_page=1"
+    ASSET_URL=$(curl -fsSL "$API_URL" 2>/dev/null | grep -o '"browser_download_url": *"[^"]*'"${BIN_NAME}"'"' | head -1 | grep -o 'https://[^"]*')
+    if [[ -n "$ASSET_URL" ]]; then
+        curl -fsSL "$ASSET_URL" -o "${INSTALL_DIR}/${BIN_NAME}" 2>/dev/null && [[ -s "${INSTALL_DIR}/${BIN_NAME}" ]] && DOWNLOAD_OK=true
+    fi
+fi
 
 if $DOWNLOAD_OK; then
     info "Downloaded from GitHub Release"
 else
-    warn "No prebuilt binary found (Release not created yet), compiling from source..."
-    warn "This takes 5-10 minutes"
+    warn "No prebuilt binary found, will compile from source (5-10 min)..."
+    echo ""
+    echo "  This will install Go + Node.js and build BorderX."
+    echo "  For low-spec VPS, consider uploading a prebuilt binary to GitHub Releases."
+    echo ""
+    read -rp "  Continue? [Y/n]: " do_compile
+    [[ "$do_compile" == "n" || "$do_compile" == "N" ]] && error "Aborted. Upload a prebuilt binary to GitHub Releases and re-run."
 
     if ! command -v go &>/dev/null; then
         info "Installing Go 1.22..."
