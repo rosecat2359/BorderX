@@ -182,6 +182,9 @@ func main() {
 		adm.DELETE("/plans/:id", adminH.DeletePlan)
 		adm.GET("/orders", adminH.ListOrders)
 		adm.POST("/orders/:id/cancel", adminH.CancelOrder)
+		adm.GET("/traffic/summary", adminH.TrafficSummary)
+		adm.GET("/traffic/accounts", adminH.TrafficByAccount)
+		adm.GET("/traffic/timeline", adminH.TrafficTimeline)
 	}
 
 	// ---- SPA fallback ----

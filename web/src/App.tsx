@@ -10,6 +10,7 @@ import AdminDashboard from './pages/admin/Dashboard'
 import AdminUsers from './pages/admin/Users'
 import AdminPlans from './pages/admin/Plans'
 import AdminOrders from './pages/admin/Orders'
+import AdminTraffic from './pages/admin/Traffic'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth()
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="users" element={<AdminUsers />} />
           <Route path="plans" element={<AdminPlans />} />
           <Route path="orders" element={<AdminOrders />} />
+          <Route path="traffic" element={<AdminTraffic />} />
         </Route>
       </Routes>
     </BrowserRouter>

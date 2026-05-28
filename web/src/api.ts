@@ -49,6 +49,9 @@ export const admin = {
   deletePlan: (id: string) => api.delete(`/admin/plans/${id}`),
   listOrders: (params?: any) => api.get('/admin/orders', { params }),
   cancelOrder: (id: string) => api.post(`/admin/orders/${id}/cancel`),
+  getTrafficSummary: () => api.get('/admin/traffic/summary'),
+  getTrafficAccounts: (days: number) => api.get('/admin/traffic/accounts', { params: { days } }),
+  getTrafficTimeline: () => api.get('/admin/traffic/timeline'),
 }
 
 export default api

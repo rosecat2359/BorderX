@@ -2,8 +2,10 @@ package admin
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/borderx/panel/internal/model"
 	"github.com/gin-gonic/gin"
@@ -388,4 +390,83 @@ func (h *Handler) Dashboard(c *gin.Context) {
 		"active_accounts": activeAccounts,
 		"revenue_today":   revenueToday,
 	})
+}
+
+// ========================
+// Traffic
+// ========================
+
+// TrafficSummary returns overview traffic stats.
+func (h *Handler) TrafficSummary(c *gin.Context) {
+	var totalUpload, totalDownload int64
+	h.DB.QueryRow("SELECT COALESCE(SUM(upload_bytes),0), COALESCE(SUM(download_bytes),0) FROM traffic_hourly WHERE hour > now() - interval '30 days'").Scan(&totalUpload, &totalDownload)
+
+	var activeAccounts int
+	h.DB.QueryRow("SELECT count(*) FROM vpn_accounts WHERE status='active'").Scan(&activeAccounts)
+
+	c.JSON(http.StatusOK, gin.H{
+		"total_upload_gb":   float64(totalUpload) / 1024 / 1024 / 1024,
+		"total_download_gb": float64(totalDownload) / 1024 / 1024 / 1024,
+		"active_accounts":   activeAccounts,
+	})
+}
+
+// TrafficByAccount returns per-account traffic for the last N days.
+func (h *Handler) TrafficByAccount(c *gin.Context) {
+	days := queryInt(c, "days", 7)
+	rows, err := h.DB.Query(`
+		SELECT va.email, va.protocol, COALESCE(SUM(th.upload_bytes),0), COALESCE(SUM(th.download_bytes),0)
+		FROM vpn_accounts va
+		LEFT JOIN traffic_hourly th ON va.id = th.account_id AND th.hour > now() - ($1 || ' days')::interval
+		WHERE va.status = 'active'
+		GROUP BY va.id, va.email, va.protocol
+		ORDER BY COALESCE(SUM(th.upload_bytes),0) + COALESCE(SUM(th.download_bytes),0) DESC
+		LIMIT 100`, fmt.Sprintf("%d", days))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败"})
+		return
+	}
+	defer rows.Close()
+
+	items := []gin.H{}
+	for rows.Next() {
+		var email, protocol string
+		var up, down int64
+		rows.Scan(&email, &protocol, &up, &down)
+		items = append(items, gin.H{
+			"email":       email,
+			"protocol":    protocol,
+			"upload_gb":   float64(up) / 1024 / 1024 / 1024,
+			"download_gb": float64(down) / 1024 / 1024 / 1024,
+			"total_gb":    float64(up+down) / 1024 / 1024 / 1024,
+		})
+	}
+	c.JSON(http.StatusOK, items)
+}
+
+// TrafficTimeline returns hourly traffic for charts (last 24h).
+func (h *Handler) TrafficTimeline(c *gin.Context) {
+	rows, err := h.DB.Query(`
+		SELECT hour, COALESCE(SUM(upload_bytes),0), COALESCE(SUM(download_bytes),0)
+		FROM traffic_hourly
+		WHERE hour > now() - interval '24 hours'
+		GROUP BY hour ORDER BY hour`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败"})
+		return
+	}
+	defer rows.Close()
+
+	items := []gin.H{}
+	for rows.Next() {
+		var hour time.Time
+		var up, down int64
+		rows.Scan(&hour, &up, &down)
+		items = append(items, gin.H{
+			"hour":        hour.Format("2006-01-02 15:04"),
+			"upload_gb":   float64(up) / 1024 / 1024 / 1024,
+			"download_gb": float64(down) / 1024 / 1024 / 1024,
+		})
+	}
+	c.JSON(http.StatusOK, items)
 }
