@@ -8,12 +8,14 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/robfig/cron/v3"
 	"github.com/borderx/panel/internal/admin"
 	"github.com/borderx/panel/internal/api"
 	"github.com/borderx/panel/internal/auth"
 	"github.com/borderx/panel/internal/config"
 	"github.com/borderx/panel/internal/store"
 	"github.com/borderx/panel/internal/sub"
+	"github.com/borderx/panel/internal/traffic"
 	"github.com/borderx/panel/internal/xray"
 	"github.com/borderx/panel/web"
 )
@@ -44,6 +46,22 @@ func main() {
 	}
 	apiH := &api.Handler{DB: db, Xray: xrayMgr}
 	subH := &sub.Handler{DB: db}
+
+	// 流量采集（需要 Xray 运行）
+	statsCollector, statsErr := xray.NewStatsCollector(cfg.Xray.StatsPort)
+	if statsErr != nil {
+		log.Printf("警告: 流量采集模块初始化失败: %v", statsErr)
+	}
+	if statsCollector != nil {
+		col := traffic.NewCollector(db, statsCollector)
+		cronRunner := cron.New()
+		cronRunner.AddFunc("@every 60s", func() { col.Collect() })
+		cronRunner.AddFunc("@every 1h", func() { col.Archive() })
+		cronRunner.AddFunc("@daily", func() { col.CheckExpired() })
+		cronRunner.Start()
+		defer cronRunner.Stop()
+		log.Println("流量采集 + 定时任务已启动")
+	}
 
 	gin.SetMode(cfg.Server.Mode)
 	r := gin.Default()
