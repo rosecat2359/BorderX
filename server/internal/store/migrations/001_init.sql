@@ -1,6 +1,6 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
@@ -9,7 +9,7 @@ CREATE TABLE users (
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
 
-CREATE TABLE admins (
+CREATE TABLE IF NOT EXISTS admins (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username VARCHAR(64) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
@@ -18,7 +18,7 @@ CREATE TABLE admins (
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
 
-CREATE TABLE plans (
+CREATE TABLE IF NOT EXISTS plans (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(128) NOT NULL,
     price_cents INT NOT NULL DEFAULT 0,
@@ -30,7 +30,7 @@ CREATE TABLE plans (
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
 
-CREATE TABLE orders (
+CREATE TABLE IF NOT EXISTS orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id),
     plan_id UUID NOT NULL REFERENCES plans(id),
@@ -43,7 +43,7 @@ CREATE TABLE orders (
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
 
-CREATE TABLE vpn_accounts (
+CREATE TABLE IF NOT EXISTS vpn_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id),
     order_id UUID REFERENCES orders(id),
@@ -59,7 +59,7 @@ CREATE TABLE vpn_accounts (
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
 
-CREATE TABLE traffic_logs (
+CREATE TABLE IF NOT EXISTS traffic_logs (
     id BIGSERIAL PRIMARY KEY,
     account_id UUID NOT NULL REFERENCES vpn_accounts(id),
     upload_bytes BIGINT NOT NULL DEFAULT 0,
@@ -68,7 +68,7 @@ CREATE TABLE traffic_logs (
 );
 CREATE INDEX idx_traffic_logs_account ON traffic_logs(account_id, recorded_at);
 
-CREATE TABLE traffic_hourly (
+CREATE TABLE IF NOT EXISTS traffic_hourly (
     id BIGSERIAL PRIMARY KEY,
     account_id UUID NOT NULL REFERENCES vpn_accounts(id),
     upload_bytes BIGINT NOT NULL DEFAULT 0,
@@ -77,7 +77,7 @@ CREATE TABLE traffic_hourly (
     UNIQUE(account_id, hour)
 );
 
-CREATE TABLE nodes (
+CREATE TABLE IF NOT EXISTS nodes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(128) NOT NULL,
     host VARCHAR(255) NOT NULL,
@@ -90,7 +90,7 @@ CREATE TABLE nodes (
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
 
-CREATE TABLE sub_tokens (
+CREATE TABLE IF NOT EXISTS sub_tokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) UNIQUE,
     token VARCHAR(64) NOT NULL UNIQUE,
@@ -98,7 +98,7 @@ CREATE TABLE sub_tokens (
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
 
-CREATE TABLE audit_logs (
+CREATE TABLE IF NOT EXISTS audit_logs (
     id BIGSERIAL PRIMARY KEY,
     admin_id UUID REFERENCES admins(id),
     action VARCHAR(128) NOT NULL,
