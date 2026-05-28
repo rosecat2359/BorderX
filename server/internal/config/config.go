@@ -115,10 +115,10 @@ func applyDefaults(cfg *Config) {
 		cfg.JWT.ExpireHour = 24
 	}
 	if cfg.Xray.ConfigPath == "" {
-		cfg.Xray.ConfigPath = "/etc/xray/config.json"
+		cfg.Xray.ConfigPath = "/usr/local/etc/xray/config.json"
 	}
 	if cfg.Xray.StatsPort == 0 {
-		cfg.Xray.StatsPort = 8085
+		cfg.Xray.StatsPort = 10085
 	}
 	if cfg.Xray.BinaryPath == "" {
 		cfg.Xray.BinaryPath = "/usr/local/bin/xray"
