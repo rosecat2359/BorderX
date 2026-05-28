@@ -13,6 +13,7 @@ import (
 	"github.com/borderx/panel/internal/auth"
 	"github.com/borderx/panel/internal/config"
 	"github.com/borderx/panel/internal/store"
+	"github.com/borderx/panel/internal/sub"
 	"github.com/borderx/panel/internal/xray"
 	"github.com/borderx/panel/web"
 )
@@ -42,6 +43,7 @@ func main() {
 		log.Printf("警告: Xray 管理模块初始化失败: %v（VPN 功能不可用）", err)
 	}
 	apiH := &api.Handler{DB: db, Xray: xrayMgr}
+	subH := &sub.Handler{DB: db}
 
 	gin.SetMode(cfg.Server.Mode)
 	r := gin.Default()
@@ -50,6 +52,7 @@ func main() {
 	r.POST("/api/auth/register", authH.Register)
 	r.POST("/api/auth/login", authH.Login)
 	r.POST("/api/auth/admin-login", authH.AdminLogin)
+	r.GET("/api/sub", subH.Serve)
 
 	// ---- 用户路由 ----
 	user := r.Group("/api")
