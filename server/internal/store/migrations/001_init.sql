@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS traffic_logs (
     download_bytes BIGINT NOT NULL DEFAULT 0,
     recorded_at TIMESTAMP NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_traffic_logs_account ON traffic_logs(account_id, recorded_at);
+CREATE INDEX IF NOT EXISTS idx_traffic_logs_account ON traffic_logs(account_id, recorded_at);
 
 CREATE TABLE IF NOT EXISTS traffic_hourly (
     id BIGSERIAL PRIMARY KEY,
