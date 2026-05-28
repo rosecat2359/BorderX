@@ -9,9 +9,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/borderx/panel/internal/admin"
+	"github.com/borderx/panel/internal/api"
 	"github.com/borderx/panel/internal/auth"
 	"github.com/borderx/panel/internal/config"
 	"github.com/borderx/panel/internal/store"
+	"github.com/borderx/panel/internal/xray"
 	"github.com/borderx/panel/web"
 )
 
@@ -34,6 +36,13 @@ func main() {
 	authH := &auth.Handler{DB: db, JWT: jwtMgr}
 	adminH := &admin.Handler{DB: db}
 
+	// Initialize Xray Manager (optional — skip if config file is missing)
+	xrayMgr, err := xray.NewManager(cfg.Xray.ConfigPath)
+	if err != nil {
+		log.Printf("警告: Xray 管理模块初始化失败: %v（VPN 功能不可用）", err)
+	}
+	apiH := &api.Handler{DB: db, Xray: xrayMgr}
+
 	gin.SetMode(cfg.Server.Mode)
 	r := gin.Default()
 
@@ -46,15 +55,11 @@ func main() {
 	user := r.Group("/api")
 	user.Use(jwtMgr.UserRequired())
 	{
-		user.GET("/plans", func(c *gin.Context) {
-			adminH.ListPlans(c)
-		})
-		user.GET("/me", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{
-				"user_id": c.GetString("user_id"),
-				"email":   c.GetString("email"),
-			})
-		})
+		user.GET("/plans", func(c *gin.Context) { adminH.ListPlans(c) })
+		user.GET("/me", apiH.Me)
+		user.POST("/orders", apiH.CreateOrder)
+		user.GET("/orders", apiH.ListOrders)
+		user.GET("/accounts", apiH.ListAccounts)
 	}
 
 	// ---- 管理路由 ----
