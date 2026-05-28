@@ -31,11 +31,16 @@ info "Configuring PostgreSQL..."
 systemctl start postgresql
 systemctl enable postgresql
 
-DB_PASSWORD=$(openssl rand -base64 16)
-su - postgres -c "psql -c \"CREATE USER borderx WITH PASSWORD '${DB_PASSWORD}';\"" 2>/dev/null || true
+# Check if user already exists, reuse password if so
+if su - postgres -c "psql -t -c \"SELECT 1 FROM pg_roles WHERE rolname='borderx';\"" 2>/dev/null | grep -q 1; then
+    info "Database user borderx already exists, preserving password"
+else
+    DB_PASSWORD=$(openssl rand -base64 16)
+    su - postgres -c "psql -c \"CREATE USER borderx WITH PASSWORD '${DB_PASSWORD}';\"" 2>/dev/null || true
+    info "Database user borderx created"
+fi
 su - postgres -c "psql -c \"CREATE DATABASE borderx OWNER borderx;\"" 2>/dev/null || true
 su - postgres -c "psql -c \"ALTER USER borderx CREATEDB;\""
-info "Database user borderx created"
 
 # ---- 3. Download or compile binary ----
 info "Getting BorderX Panel..."
@@ -110,6 +115,15 @@ chmod +x "${INSTALL_DIR}/${BIN_NAME}"
 # ---- 4. Config ----
 info "Creating config..."
 mkdir -p /etc/borderx
+
+# Get password: reuse if already set, otherwise generate
+if [[ -f /etc/borderx/config.yml ]]; then
+    DB_PASSWORD=$(grep 'password:' /etc/borderx/config.yml | head -1 | sed 's/.*password: *"\([^"]*\)".*/\1/')
+fi
+if [[ -z "${DB_PASSWORD:-}" ]]; then
+    DB_PASSWORD=$(openssl rand -base64 16)
+fi
+
 JWT_SECRET=$(openssl rand -base64 32)
 
 cat > /etc/borderx/config.yml << YEOF
