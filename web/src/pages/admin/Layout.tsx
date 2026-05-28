@@ -32,6 +32,7 @@ export default function AdminLayout() {
           <Link to="/admin/traffic" className={linkClass('/admin/traffic')}>流量统计</Link>
           <Link to="/admin/orders" className={linkClass('/admin/orders')}>订单管理</Link>
           <Link to="/admin/plans" className={linkClass('/admin/plans')}>套餐管理</Link>
+          <Link to="/admin/audit" className={linkClass('/admin/audit')}>操作日志</Link>
         </nav>
 
         <div className="p-4 border-t border-gray-700">

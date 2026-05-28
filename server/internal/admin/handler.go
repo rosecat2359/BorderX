@@ -138,6 +138,7 @@ func (h *Handler) DisableUser(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		return
 	}
+	h.LogAction(c.GetString("admin_id"), "user.disable", "users", c.Param("id"))
 	c.JSON(http.StatusOK, gin.H{"message": "用户已禁用"})
 }
 
@@ -154,6 +155,7 @@ func (h *Handler) EnableUser(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "用户不存在"})
 		return
 	}
+	h.LogAction(c.GetString("admin_id"), "user.enable", "users", c.Param("id"))
 	c.JSON(http.StatusOK, gin.H{"message": "用户已启用"})
 }
 
@@ -209,6 +211,7 @@ func (h *Handler) CreatePlan(c *gin.Context) {
 		return
 	}
 
+	h.LogAction(c.GetString("admin_id"), "plan.create", "plans", p.ID)
 	c.JSON(http.StatusCreated, p)
 }
 
@@ -239,6 +242,7 @@ func (h *Handler) UpdatePlan(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "套餐不存在"})
 		return
 	}
+	h.LogAction(c.GetString("admin_id"), "plan.update", "plans", id)
 	c.JSON(http.StatusOK, gin.H{"message": "更新成功"})
 }
 
@@ -255,6 +259,7 @@ func (h *Handler) DeletePlan(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "套餐不存在"})
 		return
 	}
+	h.LogAction(c.GetString("admin_id"), "plan.delete", "plans", id)
 	c.JSON(http.StatusOK, gin.H{"message": "删除成功"})
 }
 
@@ -358,6 +363,64 @@ func (h *Handler) CancelOrder(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "订单已取消"})
+}
+
+// ========================
+// Audit Logs
+// ========================
+
+// ListAuditLogs returns paginated audit logs.
+func (h *Handler) ListAuditLogs(c *gin.Context) {
+	page := queryInt(c, "page", 1)
+	size := queryInt(c, "size", 20)
+	offset := (page - 1) * size
+
+	var total int
+	h.DB.QueryRow("SELECT count(*) FROM audit_logs").Scan(&total)
+
+	rows, err := h.DB.Query(`
+		SELECT al.id, al.action, al.target_type, al.target_id, al.created_at,
+		       COALESCE(a.username, 'system') as admin_name
+		FROM audit_logs al
+		LEFT JOIN admins a ON al.admin_id = a.id
+		ORDER BY al.created_at DESC LIMIT $1 OFFSET $2`, size, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询失败"})
+		return
+	}
+	defer rows.Close()
+
+	items := []gin.H{}
+	for rows.Next() {
+		var id int64
+		var action, targetType, adminName string
+		var targetID sql.NullString
+		var createdAt time.Time
+		rows.Scan(&id, &action, &targetType, &targetID, &createdAt, &adminName)
+
+		tid := ""
+		if targetID.Valid {
+			tid = targetID.String
+		}
+
+		items = append(items, gin.H{
+			"id":          id,
+			"admin_name":  adminName,
+			"action":      action,
+			"target_type": targetType,
+			"target_id":   tid,
+			"created_at":  createdAt,
+		})
+	}
+	c.JSON(http.StatusOK, model.Paginated{Items: items, Total: total, Page: page, Size: size})
+}
+
+// LogAction writes an audit log entry.
+func (h *Handler) LogAction(adminID, action, targetType, targetID string) {
+	h.DB.Exec(
+		"INSERT INTO audit_logs (admin_id, action, target_type, target_id) VALUES ($1,$2,$3,$4)",
+		adminID, action, targetType, targetID,
+	)
 }
 
 // ========================

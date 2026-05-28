@@ -15,6 +15,7 @@ import (
 	"github.com/borderx/panel/internal/api"
 	"github.com/borderx/panel/internal/auth"
 	"github.com/borderx/panel/internal/config"
+	"github.com/borderx/panel/internal/mail"
 	"github.com/borderx/panel/internal/payment"
 	"github.com/borderx/panel/internal/store"
 	"github.com/borderx/panel/internal/sub"
@@ -40,6 +41,14 @@ func main() {
 
 	jwtMgr := auth.NewJWTManager(cfg.JWT.Secret, cfg.JWT.ExpireHour)
 	authH := &auth.Handler{DB: db, JWT: jwtMgr}
+
+	// Initialize MailSender (optional — skip if SMTP host is empty)
+	var mailSender *mail.Sender
+	if cfg.SMTP.Host != "" {
+		mailSender = mail.NewSender(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.From)
+	}
+	authH.MailSender = mailSender
+
 	adminH := &admin.Handler{DB: db}
 
 	// Initialize Xray Manager (optional — skip if config file is missing)
@@ -152,6 +161,9 @@ func main() {
 	r.POST("/api/auth/register", authH.Register)
 	r.POST("/api/auth/login", authH.Login)
 	r.POST("/api/auth/admin-login", authH.AdminLogin)
+	r.GET("/api/auth/verify-email", authH.VerifyEmail)
+	r.POST("/api/auth/forgot-password", authH.ForgotPassword)
+	r.POST("/api/auth/reset-password", authH.ResetPassword)
 	r.GET("/api/sub", subH.Serve)
 	r.POST("/api/payment/alipay/notify", payH.AlipayNotify)
 
@@ -165,6 +177,7 @@ func main() {
 		user.GET("/orders", apiH.ListOrders)
 		user.GET("/orders/:id/status", payH.GetOrderStatus)
 		user.GET("/accounts", apiH.ListAccounts)
+		user.POST("/send-verify-email", authH.SendVerifyEmail)
 	}
 
 	// ---- 管理路由 ----
@@ -185,6 +198,7 @@ func main() {
 		adm.GET("/traffic/summary", adminH.TrafficSummary)
 		adm.GET("/traffic/accounts", adminH.TrafficByAccount)
 		adm.GET("/traffic/timeline", adminH.TrafficTimeline)
+		adm.GET("/audit-logs", adminH.ListAuditLogs)
 	}
 
 	// ---- SPA fallback ----

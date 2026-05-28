@@ -11,6 +11,7 @@ import AdminUsers from './pages/admin/Users'
 import AdminPlans from './pages/admin/Plans'
 import AdminOrders from './pages/admin/Orders'
 import AdminTraffic from './pages/admin/Traffic'
+import AdminAudit from './pages/admin/Audit'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth()
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="plans" element={<AdminPlans />} />
           <Route path="orders" element={<AdminOrders />} />
           <Route path="traffic" element={<AdminTraffic />} />
+          <Route path="audit" element={<AdminAudit />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -52,6 +52,7 @@ export const admin = {
   getTrafficSummary: () => api.get('/admin/traffic/summary'),
   getTrafficAccounts: (days: number) => api.get('/admin/traffic/accounts', { params: { days } }),
   getTrafficTimeline: () => api.get('/admin/traffic/timeline'),
+  getAuditLogs: (page: number) => api.get('/admin/audit-logs', { params: { page } }),
 }
 
 export default api
