@@ -109,6 +109,7 @@ chmod +x "${INSTALL_DIR}/${BIN_NAME}"
 
 # ---- 4. Config ----
 info "Creating config..."
+mkdir -p /etc/borderx
 JWT_SECRET=$(openssl rand -base64 32)
 
 cat > /etc/borderx/config.yml << YEOF
