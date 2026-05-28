@@ -27,7 +27,7 @@
 ### 一键安装（Debian/Ubuntu）
 
 ```bash
-curl -sL https://get.borderx.io/install.sh | bash
+curl -sL https://raw.githubusercontent.com/rosecat2359/BorderX/main/deploy/install.sh | bash
 ```
 
 安装后访问 `http://<服务器IP>` 即可。默认管理员：`admin` / `admin123`。
