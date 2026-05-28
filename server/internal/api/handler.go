@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/borderx/panel/internal/payment"
 	"github.com/borderx/panel/internal/xray"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -12,8 +13,9 @@ import (
 
 // Handler handles user-facing API operations.
 type Handler struct {
-	DB   *sql.DB
-	Xray *xray.Manager
+	DB     *sql.DB
+	Xray   *xray.Manager
+	Alipay *payment.AlipayClient
 }
 
 // CreateOrderRequest is the request body for CreateOrder.
@@ -22,8 +24,10 @@ type CreateOrderRequest struct {
 	Protocol string `json:"protocol"` // vless/vmess/trojan, default vless
 }
 
-// CreateOrder creates an order, marks it paid (MVP), provisions a VPN account,
-// writes Xray config, and ensures a subscription token exists.
+// CreateOrder creates an order. When Alipay is configured the order starts as
+// "pending" and a QR code URL is returned; the user pays and the Alipay notify
+// callback finalises the order. Without Alipay (MVP), the order is marked "paid"
+// immediately and a VPN account is provisioned inline.
 func (h *Handler) CreateOrder(c *gin.Context) {
 	var req CreateOrderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -46,16 +50,29 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "套餐不存在或已下架"})
 		return
 	}
-	_ = planName // reserved for future use
 
-	// Create order
+	// Create order with pending status
 	var orderID string
 	h.DB.QueryRow(
-		"INSERT INTO orders (user_id, plan_id, amount_cents) VALUES ($1,$2,$3) RETURNING id",
-		userID, req.PlanID, priceCents,
+		"INSERT INTO orders (user_id, plan_id, amount_cents, protocol) VALUES ($1,$2,$3,$4) RETURNING id",
+		userID, req.PlanID, priceCents, req.Protocol,
 	).Scan(&orderID)
 
-	// MVP: mark as paid directly (Phase 3 will integrate payment)
+	// ---- Alipay 模式: 返回 QR 码让用户扫码支付 ----
+	if h.Alipay != nil {
+		qrCode, _ := h.Alipay.TradePrecreate(orderID, planName, float64(priceCents)/100.0)
+
+		c.JSON(http.StatusCreated, gin.H{
+			"order_id":  orderID,
+			"amount":    float64(priceCents) / 100.0,
+			"status":    "pending",
+			"qr_code":   qrCode,
+			"plan_name": planName,
+		})
+		return
+	}
+
+	// ---- MVP 模式: 直接标记 paid + 创建 VPN 账号 ----
 	now := time.Now()
 	expiresAt := now.Add(time.Duration(durationDays) * 24 * time.Hour)
 	h.DB.Exec(
@@ -87,18 +104,12 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 		}[req.Protocol]
 		email := accountID + "@borderx"
 		if err := h.Xray.AddClient(tag, req.Protocol, email, vpnUUID, password); err != nil {
-			// Log the error but do not roll back — the account is already
-			// created and an admin can fix the config manually.
 			c.Error(err)
 		}
 	}
 
 	// Ensure a subscription token exists for the user
-	var subToken string
-	h.DB.QueryRow(
-		`INSERT INTO sub_tokens (user_id, token) VALUES ($1,$2) ON CONFLICT (user_id) DO UPDATE SET token=sub_tokens.token RETURNING token`,
-		userID, uuid.New().String()[:16],
-	).Scan(&subToken)
+	subToken, _ := payment.EnsureSubToken(h.DB, userID)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"order_id":   orderID,

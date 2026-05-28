@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
-import { plans } from '../api'
+import { Link, useNavigate } from 'react-router-dom'
+import { plans, orders } from '../api'
+import { useAuth } from '../store/auth'
 import type { Plan } from '../api'
 
 export default function Home() {
   const [planList, setPlanList] = useState<Plan[]>([])
   const [loading, setLoading] = useState(true)
+  const [buyingPlan, setBuyingPlan] = useState<string | null>(null)
+  const { token } = useAuth()
+  const navigate = useNavigate()
 
   useEffect(() => {
     plans.list()
@@ -13,6 +17,26 @@ export default function Home() {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
+
+  const handleBuy = async (plan: Plan) => {
+    if (!token) {
+      navigate('/register')
+      return
+    }
+    setBuyingPlan(plan.id)
+    try {
+      const res = await orders.create(plan.id)
+      const { order_id, qr_code, amount, plan_name } = res.data
+      navigate('/payment', {
+        state: { orderId: order_id, qrCode: qr_code, amount, planName: plan_name },
+      })
+    } catch {
+      // API call failed — fallback to register
+      navigate('/register')
+    } finally {
+      setBuyingPlan(null)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -62,12 +86,13 @@ export default function Home() {
                     支持 {plan.max_devices} 台设备
                   </li>
                 </ul>
-                <Link
-                  to="/register"
-                  className="block w-full text-center py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+                <button
+                  onClick={() => handleBuy(plan)}
+                  disabled={buyingPlan === plan.id}
+                  className="block w-full text-center py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  立即购买
-                </Link>
+                  {buyingPlan === plan.id ? '处理中...' : '立即购买'}
+                </button>
               </div>
             ))}
           </div>

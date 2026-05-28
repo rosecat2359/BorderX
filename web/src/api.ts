@@ -30,6 +30,13 @@ export const auth = {
 
 export const plans = { list: () => api.get<Plan[]>('/plans') }
 
+export const orders = {
+  create: (planID: string, protocol?: string) =>
+    api.post('/orders', { plan_id: planID, protocol }),
+  list: () => api.get('/orders'),
+  status: (id: string) => api.get<{ status: string }>(`/orders/${id}/status`),
+}
+
 export const admin = {
   dashboard: () => api.get('/admin/dashboard'),
   listUsers: (params?: any) => api.get('/admin/users', { params }),

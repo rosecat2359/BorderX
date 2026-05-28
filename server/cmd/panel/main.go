@@ -6,13 +6,16 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
 	"github.com/borderx/panel/internal/admin"
 	"github.com/borderx/panel/internal/api"
 	"github.com/borderx/panel/internal/auth"
 	"github.com/borderx/panel/internal/config"
+	"github.com/borderx/panel/internal/payment"
 	"github.com/borderx/panel/internal/store"
 	"github.com/borderx/panel/internal/sub"
 	"github.com/borderx/panel/internal/traffic"
@@ -44,8 +47,87 @@ func main() {
 	if err != nil {
 		log.Printf("警告: Xray 管理模块初始化失败: %v（VPN 功能不可用）", err)
 	}
-	apiH := &api.Handler{DB: db, Xray: xrayMgr}
+
+	// Initialize Alipay Client (optional — skip if AppID is empty)
+	var alipayClient *payment.AlipayClient
+	if cfg.Alipay.AppID != "" {
+		notifyURL := cfg.Alipay.NotifyDomain + "/api/payment/alipay/notify"
+		var alipayErr error
+		alipayClient, alipayErr = payment.NewAlipayClient(payment.AlipayConfig{
+			AppID:        cfg.Alipay.AppID,
+			PrivateKey:   cfg.Alipay.PrivateKey,
+			AlipayPubKey: cfg.Alipay.AlipayPubKey,
+			NotifyURL:    notifyURL,
+		})
+		if alipayErr != nil {
+			log.Printf("警告: 支付宝初始化失败: %v", alipayErr)
+			alipayClient = nil
+		} else {
+			log.Println("支付宝支付模块已启用")
+		}
+	}
+
+	// Build API handler (now with optional Alipay client)
+	apiH := &api.Handler{DB: db, Xray: xrayMgr, Alipay: alipayClient}
 	subH := &sub.Handler{DB: db}
+
+	// CreateAccount callback: provisions a VPN account + Xray config after
+	// a successful Alipay payment notification.
+	createAccountFn := func(userID, orderID, protocol string) error {
+		var planID string
+		var durationDays, trafficGB int
+		if err := db.QueryRow(
+			"SELECT plan_id, (SELECT duration_days FROM plans WHERE id=orders.plan_id), (SELECT traffic_limit_gb FROM plans WHERE id=orders.plan_id) FROM orders WHERE id=$1",
+			orderID,
+		).Scan(&planID, &durationDays, &trafficGB); err != nil {
+			return fmt.Errorf("查询计划信息失败: %w", err)
+		}
+
+		now := time.Now()
+		expiresAt := now.Add(time.Duration(durationDays) * 24 * time.Hour)
+
+		// Update order dates
+		db.Exec("UPDATE orders SET starts_at=$1, expires_at=$2 WHERE id=$3", now, expiresAt, orderID)
+
+		vpnUUID := uuid.New().String()
+		password := ""
+		if protocol == "trojan" {
+			password = uuid.New().String()[:16]
+		}
+
+		var accountID string
+		if err := db.QueryRow(
+			`INSERT INTO vpn_accounts (user_id, order_id, protocol, uuid, password, traffic_limit_bytes, expires_at)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+			userID, orderID, protocol, vpnUUID, password,
+			int64(trafficGB)*1024*1024*1024, expiresAt,
+		).Scan(&accountID); err != nil {
+			return fmt.Errorf("创建 VPN 账号失败: %w", err)
+		}
+
+		// Write Xray config
+		if xrayMgr != nil {
+			tag := map[string]string{
+				"vless":  "vless-reality",
+				"vmess":  "vmess-ws",
+				"trojan": "trojan-tcp",
+			}[protocol]
+			email := accountID + "@borderx"
+			if err := xrayMgr.AddClient(tag, protocol, email, vpnUUID, password); err != nil {
+				log.Printf("[payment] 写入 Xray 配置失败 (account=%s): %v", accountID, err)
+			}
+		}
+
+		payment.EnsureSubToken(db, userID)
+		return nil
+	}
+
+	// Build payment handler
+	payH := &payment.Handler{
+		DB:            db,
+		Alipay:        alipayClient,
+		CreateAccount: createAccountFn,
+	}
 
 	// 流量采集（需要 Xray 运行）
 	statsCollector, statsErr := xray.NewStatsCollector(cfg.Xray.StatsPort)
@@ -71,6 +153,7 @@ func main() {
 	r.POST("/api/auth/login", authH.Login)
 	r.POST("/api/auth/admin-login", authH.AdminLogin)
 	r.GET("/api/sub", subH.Serve)
+	r.POST("/api/payment/alipay/notify", payH.AlipayNotify)
 
 	// ---- 用户路由 ----
 	user := r.Group("/api")
@@ -80,6 +163,7 @@ func main() {
 		user.GET("/me", apiH.Me)
 		user.POST("/orders", apiH.CreateOrder)
 		user.GET("/orders", apiH.ListOrders)
+		user.GET("/orders/:id/status", payH.GetOrderStatus)
 		user.GET("/accounts", apiH.ListAccounts)
 	}
 

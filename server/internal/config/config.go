@@ -14,6 +14,7 @@ type Config struct {
 	JWT      JWTConfig      `yaml:"jwt"`
 	SMTP     SMTPConfig     `yaml:"smtp"`
 	Xray     XrayConfig     `yaml:"xray"`
+	Alipay   AlipayConfig   `yaml:"alipay"`
 }
 
 // ServerConfig holds HTTP server settings.
@@ -52,6 +53,14 @@ type XrayConfig struct {
 	ConfigPath string `yaml:"config_path"`
 	StatsPort  int    `yaml:"stats_port"`
 	BinaryPath string `yaml:"binary_path"`
+}
+
+// AlipayConfig holds Alipay merchant configuration for payment integration.
+type AlipayConfig struct {
+	AppID        string `yaml:"app_id"`         // 支付宝应用 APPID
+	PrivateKey   string `yaml:"private_key"`    // 应用私钥文件路径
+	AlipayPubKey string `yaml:"alipay_pub_key"` // 支付宝公钥文件路径
+	NotifyDomain string `yaml:"notify_domain"`  // 回调域名（如 https://example.com）
 }
 
 // Load reads a YAML config file from the given path, applies defaults, and
