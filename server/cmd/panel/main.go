@@ -203,7 +203,23 @@ func main() {
 
 	// ---- SPA fallback ----
 	distFS, _ := fs.Sub(web.Dist, "dist")
-	r.NoRoute(gin.WrapH(http.FileServer(http.FS(distFS))))
+	fileServer := http.FileServer(http.FS(distFS))
+	r.NoRoute(func(c *gin.Context) {
+		// Try to serve the file; if 404, fall back to index.html for SPA routing
+		path := c.Request.URL.Path
+		if path != "/" {
+			// Check if file exists
+			f, err := distFS.Open(path[1:]) // strip leading /
+			if err != nil {
+				// Not a real file — serve index.html for SPA client-side routing
+				c.Request.URL.Path = "/"
+				fileServer.ServeHTTP(c.Writer, c.Request)
+				return
+			}
+			f.Close()
+		}
+		fileServer.ServeHTTP(c.Writer, c.Request)
+	})
 
 	log.Printf("BorderX Panel 启动在 :%d\n", cfg.Server.Port)
 	r.Run(fmt.Sprintf(":%d", cfg.Server.Port))
