@@ -48,8 +48,8 @@ echo ""
 echo "[1/3] 下载 BorderX Panel..."
 
 BIN_URLS=(
-  "https://ghproxy.com/https://github.com/rosecat2359/BorderX/releases/latest/download/borderx-panel-linux-${BIN_ARCH}"
-  "https://github.com/rosecat2359/BorderX/releases/latest/download/borderx-panel-linux-${BIN_ARCH}"
+  "https://github.com/rosecat2359/BorderX/releases/download/v2.0.0/borderx-panel-linux-${BIN_ARCH}"
+  "https://ghproxy.com/https://github.com/rosecat2359/BorderX/releases/download/v2.0.0/borderx-panel-linux-${BIN_ARCH}"
 )
 
 DOWNLOADED=0
