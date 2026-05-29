@@ -17,6 +17,7 @@ import (
 	"github.com/borderx/panel/internal/client"
 	"github.com/borderx/panel/internal/config"
 	"github.com/borderx/panel/internal/inbound"
+	"github.com/borderx/panel/internal/node"
 	"github.com/borderx/panel/internal/store"
 	"github.com/borderx/panel/internal/sub"
 	"github.com/borderx/panel/internal/traffic"
@@ -72,6 +73,8 @@ func main() {
 	inboundH := &inbound.Handler{DB: db, Xray: xrayMgr}
 	clientH := &client.Handler{DB: db, Xray: xrayMgr}
 	subH := &sub.Handler{DB: db}
+	nodeSSH := node.NewSSHManager()
+	nodeH := &node.Handler{DB: db, SSH: nodeSSH}
 
 	// Start traffic collector if Xray is available
 	if xrayMgr != nil {
@@ -119,14 +122,14 @@ func main() {
 		api.POST("/clients/:id/reset", clientH.Reset)
 		api.PUT("/clients/:id/inbounds", clientH.UpdateInbounds)
 
-		// Nodes (still placeholder — task 17)
-		api.GET("/nodes", func(c *gin.Context) { c.JSON(http.StatusOK, []any{}) })
-		api.GET("/nodes/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{}) })
-		api.POST("/nodes", func(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"id": "local"}) })
-		api.PUT("/nodes/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ok"}) })
-		api.DELETE("/nodes/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ok"}) })
-		api.POST("/nodes/:id/test", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"success": true}) })
-		api.GET("/nodes/:id/status", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "online"}) })
+		// Nodes
+		api.GET("/nodes", nodeH.List)
+		api.GET("/nodes/:id", nodeH.Get)
+		api.POST("/nodes", nodeH.Create)
+		api.PUT("/nodes/:id", nodeH.Update)
+		api.DELETE("/nodes/:id", nodeH.Delete)
+		api.POST("/nodes/:id/test", nodeH.Test)
+		api.GET("/nodes/:id/status", nodeH.Status)
 
 		// Traffic
 		api.GET("/traffic/overview", func(c *gin.Context) {
