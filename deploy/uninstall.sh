@@ -10,7 +10,7 @@ echo "请选择卸载模式："
 echo "  1) 仅停止服务（保留所有文件，可恢复）"
 echo "  2) 卸载程序（保留数据）"
 echo "  3) 完全清除（程序 + 数据全部删除）"
-read -p "请选择 [2]: " MODE
+read -p "请选择 [2]: " MODE < /dev/tty
 MODE=${MODE:-2}
 
 case "$MODE" in
@@ -36,7 +36,7 @@ case "$MODE" in
     echo "如需完全清除，手动执行: rm -rf /var/lib/borderx"
     ;;
   3)
-    read -p "⚠ 确定要删除所有数据吗？此操作不可恢复！ [y/N]: " CONFIRM
+    read -p "⚠ 确定要删除所有数据吗？此操作不可恢复！ [y/N]: " CONFIRM < /dev/tty
     if [ "$CONFIRM" != "y" ] && [ "$CONFIRM" != "Y" ]; then
         echo "已取消"
         exit 0

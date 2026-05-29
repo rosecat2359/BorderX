@@ -15,19 +15,19 @@ case "$ARCH" in
 esac
 
 # 询问安装目录
-read -p "安装目录 [/usr/local/bin]: " INSTALL_DIR
+read -p "安装目录 [/usr/local/bin]: " INSTALL_DIR < /dev/tty
 INSTALL_DIR=${INSTALL_DIR:-/usr/local/bin}
 
 # 询问数据目录
-read -p "数据目录 [/var/lib/borderx]: " DATA_DIR
+read -p "数据目录 [/var/lib/borderx]: " DATA_DIR < /dev/tty
 DATA_DIR=${DATA_DIR:-/var/lib/borderx}
 
 # 询问端口
-read -p "面板端口 [8080]: " PANEL_PORT
+read -p "面板端口 [8080]: " PANEL_PORT < /dev/tty
 PANEL_PORT=${PANEL_PORT:-8080}
 
 # 询问是否安装 Xray
-read -p "是否安装 Xray-core？(已安装选 n) [Y/n]: " INSTALL_XRAY
+read -p "是否安装 Xray-core？(已安装选 n) [Y/n]: " INSTALL_XRAY < /dev/tty
 INSTALL_XRAY=${INSTALL_XRAY:-Y}
 
 echo ""
@@ -37,7 +37,7 @@ echo "  数据目录: $DATA_DIR"
 echo "  面板端口: $PANEL_PORT"
 echo "  安装Xray: $INSTALL_XRAY"
 echo "════════════════════════════════════"
-read -p "确认安装? [Y/n]: " CONFIRM
+read -p "确认安装? [Y/n]: " CONFIRM < /dev/tty
 CONFIRM=${CONFIRM:-Y}
 if [ "$CONFIRM" != "Y" ] && [ "$CONFIRM" != "y" ]; then
     echo "已取消"
