@@ -32,7 +32,7 @@ type TrafficDelta struct {
 	Download int64  // 增量下行 (bytes)
 }
 
-// QueryStats calls Xray StatsService.QueryStats and parses the response.
+// QueryAll calls Xray StatsService.QueryStats and parses the response.
 //
 // Xray StatsService returns stats in format: "user>>>email>>>traffic>>>uplink"
 // We parse the raw gRPC response or fall back to a simpler approach.
@@ -40,7 +40,7 @@ type TrafficDelta struct {
 // MVP: returns an error when Xray is not running — the Collector skips
 // silently. The Xray protobuf dependency is heavy (~150MB); real gRPC
 // integration will be wired after "go get github.com/xtls/xray-core".
-func (s *StatsCollector) QueryStats() ([]TrafficDelta, error) {
+func (s *StatsCollector) QueryAll() ([]TrafficDelta, error) {
 	// Placeholder: real implementation connects via gRPC to Xray StatsService
 	// and parses stats like "user>>>email@borderx>>>traffic>>>uplink"
 	//
