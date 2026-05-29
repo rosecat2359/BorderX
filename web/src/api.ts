@@ -81,6 +81,7 @@ export const system = {
   info: () => api.get('/system/info'),
   password: (password: string) => api.put('/system/password', { password }),
   backup: () => api.post('/system/backup', {}, { responseType: 'blob' }),
+  restore: (file: File) => { const fd = new FormData(); fd.append('file', file); return api.post('/system/restore', fd) },
 }
 
 export default api

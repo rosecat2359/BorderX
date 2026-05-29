@@ -8,7 +8,7 @@ import type { Node } from '../api'
 export default function Nodes() {
   const [list, setList] = useState<Node[]>([])
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState({ name: '', host: '', ssh_port: 22, ssh_user: 'root', ssh_key: '', os: 'linux', region: '' })
+  const [form, setForm] = useState({ name: '', host: '', ssh_port: 22, ssh_user: 'root', os: 'linux' })
   const navigate = useNavigate()
 
   const load = () => { nodes.list().then(({ data }) => setList(data)).catch(() => {}) }
@@ -16,7 +16,7 @@ export default function Nodes() {
 
   const create = async () => {
     await nodes.create(form)
-    setOpen(false); setForm({ name: '', host: '', ssh_port: 22, ssh_user: 'root', ssh_key: '', os: 'linux', region: '' }); load()
+    setOpen(false); setForm({ name: '', host: '', ssh_port: 22, ssh_user: 'root', os: 'linux' }); load()
   }
 
   return (
@@ -43,6 +43,7 @@ export default function Nodes() {
               <CardActions>
                 <Button size="small" onClick={() => navigate(`/nodes/${n.id}`)}>详情</Button>
                 <Button size="small" onClick={() => { nodes.test(n.id).then(({ data }) => alert(JSON.stringify(data))).catch(() => {}) }}>测试</Button>
+                <Button size="small" color="error" onClick={() => { if(window.confirm('确定删除节点 "' + n.name + '"？关联的入站和客户端也会被删除。')) nodes.delete(n.id).then(load) }}>删除</Button>
               </CardActions>
             </Card>
           </Grid>
@@ -57,8 +58,8 @@ export default function Nodes() {
         <DialogContent>
           <TextField fullWidth label="名称" sx={{ mt: 1, mb: 2 }} value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} />
           <TextField fullWidth label="IP 地址" sx={{ mb: 2 }} value={form.host} onChange={(e) => setForm({...form, host: e.target.value})} />
-          <TextField fullWidth label="地区" sx={{ mb: 2 }} value={form.region} onChange={(e) => setForm({...form, region: e.target.value})} />
-          <TextField fullWidth label="SSH 私钥（粘贴内容）" multiline rows={4} value={form.ssh_key} onChange={(e) => setForm({...form, ssh_key: e.target.value})} />
+          <TextField fullWidth label="SSH 端口" type="number" sx={{ mb: 2 }} value={form.ssh_port} onChange={(e) => setForm({...form, ssh_port: +e.target.value})} />
+          <TextField fullWidth label="用户名" sx={{ mb: 2 }} value={form.ssh_user} onChange={(e) => setForm({...form, ssh_user: e.target.value})} />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>取消</Button>
