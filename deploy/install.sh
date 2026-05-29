@@ -73,15 +73,19 @@ mkdir -p "$DATA_DIR"
 if [ "$INSTALL_XRAY" = "Y" ] || [ "$INSTALL_XRAY" = "y" ]; then
   echo "[2/3] 安装依赖 + Xray-core..."
 
-  # 安装必要依赖
+  # 安装必要依赖（不隐藏错误输出）
   if command -v apt &>/dev/null; then
-    apt update -qq && apt install -y -qq unzip curl 2>/dev/null
+    export DEBIAN_FRONTEND=noninteractive
+    apt update -qq 2>/dev/null
+    apt install -y -qq unzip curl
   elif command -v yum &>/dev/null; then
-    yum install -y unzip curl 2>/dev/null
+    yum install -y unzip curl
+  elif command -v dnf &>/dev/null; then
+    dnf install -y unzip curl
   fi
 
-  bash -c "$(curl -sL https://ghproxy.com/https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install --beta 2>/dev/null || \
-  bash -c "$(curl -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install --beta 2>/dev/null || \
+  bash -c "$(curl -sL https://ghproxy.com/https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install --beta || \
+  bash -c "$(curl -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install --beta || \
   echo "[!] Xray 安装失败，请手动安装"
 else
   echo "[2/3] 跳过 Xray 安装"
