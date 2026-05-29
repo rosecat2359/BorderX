@@ -1,3 +1,4 @@
+// Xray config.json 读写 — 入站管理、客户端增删、配置持久化。
 package xray
 
 import (

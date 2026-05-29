@@ -1,3 +1,4 @@
+// Xray Stats API 客户端 — gRPC 流量数据采集与计数器重置。
 package xray
 
 import (

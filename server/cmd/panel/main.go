@@ -1,3 +1,5 @@
+// BorderX 轻量级 VPN 运维管理面板 — 单二进制入口。
+// 启动 HTTP API 服务，内嵌 React 前端，SQLite 数据持久化。
 package main
 
 import (

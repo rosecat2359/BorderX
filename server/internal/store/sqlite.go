@@ -1,3 +1,4 @@
+// SQLite 数据库连接、迁移与 WAL 模式配置。
 package store
 
 import (

@@ -1,3 +1,4 @@
+// 入站规则 HTTP API — CRUD、部署到节点、内置模板。
 package inbound
 
 import (

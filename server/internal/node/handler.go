@@ -1,3 +1,4 @@
+// 节点 HTTP API — CRUD、SSH 连通性测试、运行状态查询。
 package node
 
 import (

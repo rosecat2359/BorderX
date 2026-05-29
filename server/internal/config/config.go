@@ -1,3 +1,4 @@
+// YAML 配置文件加载，面板运行参数管理。
 package config
 
 import (

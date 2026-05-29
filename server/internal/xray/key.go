@@ -1,3 +1,4 @@
+// X25519 密钥对生成，Reality 短 ID 生成。
 package xray
 
 import (

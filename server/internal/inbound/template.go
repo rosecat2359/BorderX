@@ -1,3 +1,4 @@
+// VLESS / VMess / Trojan 协议入站配置模板与 Reality 密钥生成。
 package inbound
 
 import "github.com/borderx/panel/internal/xray"

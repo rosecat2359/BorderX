@@ -1,3 +1,4 @@
+// 客户端 HTTP API — 全局跨节点管理、多入站关联、可见性控制。
 package client
 
 import (

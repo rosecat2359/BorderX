@@ -1,3 +1,4 @@
+// 跨平台 Xray 操作抽象 — Linux systemctl / Windows Service。
 package xray
 
 import (

@@ -1,3 +1,4 @@
+// JWT 令牌生成与校验，单管理员认证模型。
 package auth
 
 import (

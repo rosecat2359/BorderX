@@ -1,3 +1,4 @@
+// SSH 连接池 — 远程节点注册、命令执行、文件拷贝。
 package node
 
 import (

@@ -1,3 +1,4 @@
+// 流量采集定时任务 — Xray Stats 轮询、小时归档、超限/过期自动禁用。
 package traffic
 
 import (

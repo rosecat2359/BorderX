@@ -1,3 +1,4 @@
+// 数据库模型定义 — 管理员、节点、入站、客户端、流量日志。
 package model
 
 // Admin represents the single-panel administrator.

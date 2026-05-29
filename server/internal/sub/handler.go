@@ -1,3 +1,4 @@
+// V2Ray / Clash 订阅链接生成 — 按客户端聚合多节点代理条目。
 package sub
 
 import (
