@@ -1,109 +1,101 @@
 package model
 
-import (
-	"database/sql"
-	"encoding/json"
-	"time"
-)
-
-type User struct {
-	ID           string    `json:"id" db:"id"`
-	Email        string    `json:"email" db:"email"`
-	PasswordHash string    `json:"-" db:"password_hash"`
-	Status       string    `json:"status" db:"status"`
-	CreatedAt    time.Time `json:"created_at" db:"created_at"`
-}
-
+// Admin represents the single-panel administrator.
 type Admin struct {
-	ID           string    `json:"id" db:"id"`
-	Username     string    `json:"username" db:"username"`
-	PasswordHash string    `json:"-" db:"password_hash"`
-	Role         string    `json:"role" db:"role"`
-	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	ID        int64  `json:"id"`
+	Username  string `json:"username"`
+	Password  string `json:"-"`
+	CreatedAt string `json:"created_at"`
 }
 
-type Plan struct {
-	ID             string    `json:"id"`
-	Name           string    `json:"name"`
-	PriceCents     int       `json:"price_cents"`
-	DurationDays   int       `json:"duration_days"`
-	TrafficLimitGB int       `json:"traffic_limit_gb"`
-	MaxDevices     int       `json:"max_devices"`
-	SortOrder      int       `json:"sort_order"`
-	IsActive       bool      `json:"is_active"`
-	CreatedAt      time.Time `json:"created_at"`
-}
-
-type Order struct {
-	ID          string       `json:"id"`
-	UserID      string       `json:"user_id"`
-	PlanID      string       `json:"plan_id"`
-	Status      string       `json:"status"`
-	AmountCents int          `json:"amount_cents"`
-	PaidAt      sql.NullTime `json:"paid_at"`
-	StartsAt    sql.NullTime `json:"starts_at"`
-	ExpiresAt   sql.NullTime `json:"expires_at"`
-	CreatedAt   time.Time    `json:"created_at"`
-	Plan        *Plan        `json:"plan,omitempty"`
-}
-
-type VPNAccount struct {
-	ID                string          `json:"id"`
-	UserID            string          `json:"user_id"`
-	OrderID           sql.NullString  `json:"order_id"`
-	Protocol          string          `json:"protocol"`
-	UUID              string          `json:"uuid"`
-	Password          string          `json:"password,omitempty"`
-	SettingsJSON      json.RawMessage `json:"settings_json"`
-	Status            string          `json:"status"`
-	TrafficUsedBytes  int64           `json:"traffic_used_bytes"`
-	TrafficLimitBytes int64           `json:"traffic_limit_bytes"`
-	ExpiresAt         sql.NullTime    `json:"expires_at"`
-	CreatedAt         time.Time       `json:"created_at"`
-}
-
-type TrafficLog struct {
-	ID            int64     `json:"id"`
-	AccountID     string    `json:"account_id"`
-	UploadBytes   int64     `json:"upload_bytes"`
-	DownloadBytes int64     `json:"download_bytes"`
-	RecordedAt    time.Time `json:"recorded_at"`
-}
-
+// Node represents an edge server running Xray-core.
 type Node struct {
-	ID         string       `json:"id"`
-	Name       string       `json:"name"`
-	Host       string       `json:"host"`
-	SSHPort    int          `json:"ssh_port"`
-	SSHUser    string       `json:"ssh_user"`
-	SSHKeyPath string       `json:"ssh_key_path"`
-	Region     string       `json:"region"`
-	IsActive   bool         `json:"is_active"`
-	LastSeenAt sql.NullTime `json:"last_seen_at"`
-	CreatedAt  time.Time    `json:"created_at"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Host       string `json:"host"`
+	SSHPort    int    `json:"ssh_port"`
+	SSHUser    string `json:"ssh_user"`
+	SSHKey     string `json:"-"`
+	OS         string `json:"os"`
+	Region     string `json:"region"`
+	IsActive   bool   `json:"is_active"`
+	LastSeenAt string `json:"last_seen_at,omitempty"`
+	CreatedAt  string `json:"created_at"`
+	// Computed fields (populated by JOIN / aggregation queries).
+	InboundCount int    `json:"inbound_count,omitempty"`
+	ClientCount  int    `json:"client_count,omitempty"`
+	Status       string `json:"status,omitempty"`
 }
 
-type SubToken struct {
-	ID             string       `json:"id"`
-	UserID         string       `json:"user_id"`
-	Token          string       `json:"token"`
-	LastAccessedAt sql.NullTime `json:"last_accessed_at"`
-	CreatedAt      time.Time    `json:"created_at"`
+// Inbound represents an Xray-core inbound on a specific node.
+type Inbound struct {
+	ID        string `json:"id"`
+	NodeID    string `json:"node_id"`
+	Tag       string `json:"tag"`
+	Protocol  string `json:"protocol"`
+	Port      int    `json:"port"`
+	Listen    string `json:"listen"`
+	Settings  string `json:"settings"`
+	Stream    string `json:"stream"`
+	Sniffing  bool   `json:"sniffing"`
+	IsActive  bool   `json:"is_active"`
+	CreatedAt string `json:"created_at"`
+	// Computed fields.
+	NodeName    string `json:"node_name,omitempty"`
+	ClientCount int    `json:"client_count,omitempty"`
 }
 
+// Client represents a VPN user / device.
+type Client struct {
+	ID         string          `json:"id"`
+	Name       string          `json:"name"`
+	UUID       string          `json:"uuid"`
+	Password   string          `json:"password,omitempty"`
+	Flow       string          `json:"flow"`
+	TotalLimit int64           `json:"total_limit"`
+	ExpiryAt   string          `json:"expiry_at,omitempty"`
+	IsActive   bool            `json:"is_active"`
+	CreatedAt  string          `json:"created_at"`
+	// Computed fields.
+	TotalUsed int64           `json:"total_used,omitempty"`
+	Inbounds  []ClientInbound `json:"inbounds,omitempty"`
+}
+
+// ClientInbound is the join table between clients and inbounds.
+type ClientInbound struct {
+	ClientID  string `json:"client_id"`
+	InboundID string `json:"inbound_id"`
+	IsVisible bool   `json:"is_visible"`
+	// Joined fields (populated by JOIN queries).
+	NodeName string `json:"node_name,omitempty"`
+	Protocol string `json:"protocol,omitempty"`
+	Port     int    `json:"port,omitempty"`
+	Host     string `json:"host,omitempty"`
+}
+
+// TrafficHourly records per-client-inbound traffic for a given hour.
+type TrafficHourly struct {
+	ID        int64  `json:"id"`
+	ClientID  string `json:"client_id"`
+	InboundID string `json:"inbound_id"`
+	UpBytes   int64  `json:"up_bytes"`
+	DownBytes int64  `json:"down_bytes"`
+	Hour      string `json:"hour"`
+}
+
+// AuditLog records an administrative action.
 type AuditLog struct {
-	ID         int64           `json:"id"`
-	AdminID    sql.NullString  `json:"admin_id"`
-	Action     string          `json:"action"`
-	TargetType string          `json:"target_type"`
-	TargetID   sql.NullString  `json:"target_id"`
-	DetailJSON json.RawMessage `json:"detail_json"`
-	CreatedAt  time.Time       `json:"created_at"`
+	ID        int64  `json:"id"`
+	Action    string `json:"action"`
+	Target    string `json:"target"`
+	Detail    string `json:"detail"`
+	CreatedAt string `json:"created_at"`
 }
 
-type Paginated struct {
-	Items interface{} `json:"items"`
-	Total int         `json:"total"`
-	Page  int         `json:"page"`
-	Size  int         `json:"size"`
+// DashboardStats holds aggregate statistics for the dashboard overview.
+type DashboardStats struct {
+	NodeCount      int   `json:"node_count"`
+	ActiveClients  int   `json:"active_clients"`
+	TodayUpBytes   int64 `json:"today_up_bytes"`
+	TodayDownBytes int64 `json:"today_down_bytes"`
 }
