@@ -10,6 +10,8 @@
 
 **技术栈：** Go 1.22+ + React 18 + TypeScript + SQLite + MUI v6 (Material Design 3)
 
+**支持平台：** Windows 10/11 + Windows Server 2016+ | Debian 10+/Ubuntu 20.04+/CentOS 7+ | Linux ARM64
+
 ## 架构
 
 ```
@@ -26,26 +28,29 @@
 │              │ (WAL mode)  │        │         │
 │              └─────────────┘        │         │
 │              ┌─────────────┐        │         │
-│              │ 本地 Xray    │        │         │
-│              │ config.json │        │         │
+│              │ 平台适配层    │        │         │
+│              │ Xray/服务管理 │        │         │
 │              └─────────────┘        │         │
 └──────────────────────┼──────────────┼─────────┘
                        │              │
               本地 Xray-core    远程 VPS 节点
-              :443 / :10085    (SSH 连接)
+              (Win/Linux)      (SSH 连接)
                                     │
                               ┌─────┴──────┐
                               │  Xray-core  │
-                              │  :443 入站   │
+                              │  (Win/Linux)│
                               └────────────┘
 ```
 
 **运行模式：**
 - **单机模式：** 面板启动自动检测本机 Xray，本地操作，零配置
 - **多节点模式：** 本机 + SSH 远程管理多台 VPS，可随时从单机升级
+- **Windows 节点：** 面板可直接管理 Windows Server 上的远程 Xray（SSH/WinRM）
+
+**平台适配层：** Go 内部通过 `runtime.GOOS` 自动适配路径和服务管理方式。对外统一 API，对内封装差异。
 
 **技术选型：**
-- 数据库：`modernc.org/sqlite`（纯 Go SQLite，无 CGO，零依赖）
+- 数据库：`modernc.org/sqlite`（纯 Go SQLite，无 CGO，跨平台编译零障碍）
 - SSH：`golang.org/x/crypto/ssh`
 - 路由：`gin-gonic/gin`
 - 前端：React 18 + Vite + MUI v6 (MD3) + zustand
@@ -70,6 +75,7 @@ CREATE TABLE nodes (
     ssh_port    INTEGER NOT NULL DEFAULT 22,
     ssh_user    TEXT NOT NULL DEFAULT 'root',
     ssh_key     TEXT NOT NULL DEFAULT '',
+    os          TEXT NOT NULL DEFAULT 'linux',  -- 'linux' / 'windows'
     region      TEXT NOT NULL DEFAULT '',
     is_active   INTEGER NOT NULL DEFAULT 1,
     last_seen_at TEXT,
@@ -274,6 +280,32 @@ POST   /api/system/restore             # 导入恢复
 
 ## Xray 配置管理
 
+### 平台适配
+
+| | Linux | Windows |
+|---|---|---|
+| Xray 安装路径 | `/usr/local/bin/xray` | `C:\Program Files\Xray\xray.exe` |
+| 配置目录 | `/usr/local/etc/xray/` | `C:\Program Files\Xray\` |
+| 配置文件 | `/usr/local/etc/xray/config.json` | `C:\Program Files\Xray\config.json` |
+| 服务管理 | `systemctl reload xray` | `Restart-Service Xray` (PowerShell) |
+| 日志目录 | `/var/log/xray/` | `C:\Program Files\Xray\logs\` |
+| Stats API | `127.0.0.1:10085` | `127.0.0.1:10085` |
+
+Go 内部封装 `PlatformManager` 接口，根据节点 `os` 字段自动选择：
+```go
+type PlatformManager interface {
+    DetectXray() (installed bool, version string, err error)
+    InstallXray() error
+    ConfigPath() string
+    ReloadService() error
+    RestartService() error
+    ServiceStatus() (running bool, err error)
+}
+// 实现: linuxManager{}, windowsManager{}
+```
+
+对于远程 Windows 节点，面板通过 SSH（Windows OpenSSH Server）或 WinRM 执行 PowerShell 命令管理 Xray。
+
 ### 配置模板
 
 | 模板 | 配置 |
@@ -310,16 +342,35 @@ POST   /api/system/restore             # 导入恢复
 
 ## 部署
 
-### 单二进制
+### 跨平台构建
 
 ```bash
-curl -sL <release-url>/borderx-panel-linux-amd64 -o /usr/local/bin/borderx-panel
-chmod +x /usr/local/bin/borderx-panel
-./borderx-panel
+# 构建目标
+GOOS=linux   GOARCH=amd64 go build -tags "fts5" -o dist/borderx-panel-linux-amd64
+GOOS=linux   GOARCH=arm64 go build -tags "fts5" -o dist/borderx-panel-linux-arm64
+GOOS=windows GOARCH=amd64 go build -tags "fts5" -o dist/borderx-panel-windows-amd64.exe
+```
+
+### Linux 一键安装
+
+```bash
+curl -sL <release-url>/install.sh | bash
+# 脚本自动：检测系统 → 下载二进制 → 安装 Xray（如未安装）→ 创建 systemd 服务 → 启动
 # 浏览器打开 http://<ip>:8080，设置管理员密码
 ```
 
-### Docker
+### Windows 安装
+
+```powershell
+# PowerShell 一键安装
+irm <release-url>/install.ps1 | iex
+# 脚本自动：下载 exe → 安装 Xray（如未安装）→ 注册为 Windows 服务 → 启动
+# 浏览器打开 http://localhost:8080，设置管理员密码
+```
+
+Windows 面板注册为 Windows Service（`sc create`），开机自启，后台运行。也支持直接双击 `borderx-panel-windows-amd64.exe` 前台运行（会弹出控制台窗口 + 自动打开浏览器）。
+
+### Docker（可选）
 
 ```bash
 docker run -d --name borderx \
@@ -331,7 +382,10 @@ docker run -d --name borderx \
 
 ### 打包
 
-Go 编译内嵌 React 构建产物 + SQLite，最终 ~25MB 二进制。`go build -tags "fts5"`。
+Go 编译内嵌 React 构建产物 + SQLite，最终二进制大小：
+- Linux amd64: ~25MB
+- Linux arm64: ~23MB
+- Windows amd64: ~27MB
 
 ## 目录结构
 
@@ -359,7 +413,8 @@ BorderX/
 │   │   ├── xray/
 │   │   │   ├── config.go
 │   │   │   ├── stats.go
-│   │   │   └── key.go
+│   │   │   ├── key.go
+│   │   │   └── platform.go     # 平台适配（路径/服务管理）
 │   │   ├── traffic/
 │   │   │   └── collector.go
 │   │   └── sub/
@@ -380,7 +435,8 @@ BorderX/
 │       │   └── Settings.tsx
 │       └── components/
 ├── deploy/
-│   ├── install.sh
+│   ├── install.sh            # Linux 一键安装
+│   ├── install.ps1           # Windows PowerShell 安装
 │   └── Dockerfile
 └── docs/
 ```
@@ -412,4 +468,5 @@ BorderX/
 | 订阅可见性 | 无控制 | 按节点开关 |
 | 安装复杂度 | 依赖 PostgreSQL | 单二进制 ~25MB |
 | 支付系统 | 支付宝 | 砍掉 |
+| 平台支持 | 仅 Linux | Windows + Linux (amd64/arm64) |
 | 开发周期 | 6 周 | 4.5 周 |
