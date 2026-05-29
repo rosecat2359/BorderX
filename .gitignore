@@ -1,6 +1,7 @@
 docs/superpowers
 *.exe
 server/panel
+server/borderx-panel
 server/dist/
 web/dist/
 node_modules/
