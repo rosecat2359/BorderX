@@ -71,7 +71,15 @@ echo "[OK] 二进制 → ${INSTALL_DIR}/borderx-panel"
 mkdir -p "$DATA_DIR"
 
 if [ "$INSTALL_XRAY" = "Y" ] || [ "$INSTALL_XRAY" = "y" ]; then
-  echo "[2/3] 安装 Xray-core..."
+  echo "[2/3] 安装依赖 + Xray-core..."
+
+  # 安装必要依赖
+  if command -v apt &>/dev/null; then
+    apt update -qq && apt install -y -qq unzip curl 2>/dev/null
+  elif command -v yum &>/dev/null; then
+    yum install -y unzip curl 2>/dev/null
+  fi
+
   bash -c "$(curl -sL https://ghproxy.com/https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install --beta 2>/dev/null || \
   bash -c "$(curl -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install --beta 2>/dev/null || \
   echo "[!] Xray 安装失败，请手动安装"
