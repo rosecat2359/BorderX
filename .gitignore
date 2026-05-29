@@ -3,6 +3,7 @@ docs/superpowers
 server/panel
 server/borderx-panel
 server/dist/
+server/web/dist/
 web/dist/
 node_modules/
 data/
