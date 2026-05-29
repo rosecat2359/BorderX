@@ -6,30 +6,42 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
-	"time"
+	"os"
+	"runtime"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"github.com/robfig/cron/v3"
-	"github.com/borderx/panel/internal/admin"
-	"github.com/borderx/panel/internal/api"
 	"github.com/borderx/panel/internal/auth"
 	"github.com/borderx/panel/internal/config"
-	"github.com/borderx/panel/internal/mail"
-	"github.com/borderx/panel/internal/payment"
 	"github.com/borderx/panel/internal/store"
-	"github.com/borderx/panel/internal/sub"
-	"github.com/borderx/panel/internal/traffic"
-	"github.com/borderx/panel/internal/xray"
 	"github.com/borderx/panel/web"
 )
 
 func main() {
-	cfgPath := flag.String("config", "/etc/borderx/config.yml", "配置文件路径")
+	cfgPath := flag.String("config", "", "配置文件路径（可选）")
+	dataDir := flag.String("data-dir", "./data", "数据目录")
 	flag.Parse()
 
-	cfg := config.MustLoad(*cfgPath)
-	db, err := store.Connect(cfg.DSN())
+	var cfg *config.Config
+	if *cfgPath != "" {
+		cfg = config.MustLoad(*cfgPath)
+	} else {
+		cfg = &config.Config{
+			Server: config.ServerConfig{Port: 8080, Host: "0.0.0.0"},
+			JWT:    config.JWTConfig{ExpireHour: 72},
+			Data:   config.DataConfig{Dir: *dataDir},
+			Xray:   config.XrayConfig{
+				ConfigPath: "/usr/local/etc/xray/config.json",
+				StatsPort:  10085,
+				BinaryPath: "/usr/local/bin/xray",
+			},
+		}
+	}
+
+	if err := os.MkdirAll(cfg.Data.Dir, 0700); err != nil {
+		log.Fatalf("创建数据目录失败: %v", err)
+	}
+
+	db, err := store.Connect(cfg.DBPath())
 	if err != nil {
 		log.Fatalf("数据库连接失败: %v", err)
 	}
@@ -42,176 +54,74 @@ func main() {
 	jwtMgr := auth.NewJWTManager(cfg.JWT.Secret, cfg.JWT.ExpireHour)
 	authH := &auth.Handler{DB: db, JWT: jwtMgr}
 
-	// Initialize MailSender (optional — skip if SMTP host is empty)
-	var mailSender *mail.Sender
-	if cfg.SMTP.Host != "" {
-		mailSender = mail.NewSender(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password, cfg.SMTP.From)
-	}
-	authH.MailSender = mailSender
-
-	adminH := &admin.Handler{DB: db}
-
-	// Initialize Xray Manager (optional — skip if config file is missing)
-	xrayMgr, err := xray.NewManager(cfg.Xray.ConfigPath)
-	if err != nil {
-		log.Printf("警告: Xray 管理模块初始化失败: %v（VPN 功能不可用）", err)
-	}
-
-	// Initialize Alipay Client (optional — skip if AppID is empty)
-	var alipayClient *payment.AlipayClient
-	if cfg.Alipay.AppID != "" {
-		notifyURL := cfg.Alipay.NotifyDomain + "/api/payment/alipay/notify"
-		var alipayErr error
-		alipayClient, alipayErr = payment.NewAlipayClient(payment.AlipayConfig{
-			AppID:        cfg.Alipay.AppID,
-			PrivateKey:   cfg.Alipay.PrivateKey,
-			AlipayPubKey: cfg.Alipay.AlipayPubKey,
-			NotifyURL:    notifyURL,
-		})
-		if alipayErr != nil {
-			log.Printf("警告: 支付宝初始化失败: %v", alipayErr)
-			alipayClient = nil
-		} else {
-			log.Println("支付宝支付模块已启用")
-		}
-	}
-
-	// Build API handler (now with optional Alipay client)
-	apiH := &api.Handler{DB: db, Xray: xrayMgr, Alipay: alipayClient}
-	subH := &sub.Handler{DB: db}
-
-	// CreateAccount callback: provisions a VPN account + Xray config after
-	// a successful Alipay payment notification.
-	createAccountFn := func(userID, orderID, protocol string) error {
-		var planID string
-		var durationDays, trafficGB int
-		if err := db.QueryRow(
-			"SELECT plan_id, (SELECT duration_days FROM plans WHERE id=orders.plan_id), (SELECT traffic_limit_gb FROM plans WHERE id=orders.plan_id) FROM orders WHERE id=$1",
-			orderID,
-		).Scan(&planID, &durationDays, &trafficGB); err != nil {
-			return fmt.Errorf("查询计划信息失败: %w", err)
-		}
-
-		now := time.Now()
-		expiresAt := now.Add(time.Duration(durationDays) * 24 * time.Hour)
-
-		// Update order dates
-		db.Exec("UPDATE orders SET starts_at=$1, expires_at=$2 WHERE id=$3", now, expiresAt, orderID)
-
-		vpnUUID := uuid.New().String()
-		password := ""
-		if protocol == "trojan" {
-			password = uuid.New().String()[:16]
-		}
-
-		var accountID string
-		if err := db.QueryRow(
-			`INSERT INTO vpn_accounts (user_id, order_id, protocol, uuid, password, traffic_limit_bytes, expires_at)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-			userID, orderID, protocol, vpnUUID, password,
-			int64(trafficGB)*1024*1024*1024, expiresAt,
-		).Scan(&accountID); err != nil {
-			return fmt.Errorf("创建 VPN 账号失败: %w", err)
-		}
-
-		// Write Xray config
-		if xrayMgr != nil {
-			tag := map[string]string{
-				"vless":  "vless-reality",
-				"vmess":  "vmess-ws",
-				"trojan": "trojan-tcp",
-			}[protocol]
-			email := accountID + "@borderx"
-			if err := xrayMgr.AddClient(tag, protocol, email, vpnUUID, password); err != nil {
-				log.Printf("[payment] 写入 Xray 配置失败 (account=%s): %v", accountID, err)
-			}
-		}
-
-		payment.EnsureSubToken(db, userID)
-		return nil
-	}
-
-	// Build payment handler
-	payH := &payment.Handler{
-		DB:            db,
-		Alipay:        alipayClient,
-		CreateAccount: createAccountFn,
-	}
-
-	// 流量采集（需要 Xray 运行）
-	statsCollector, statsErr := xray.NewStatsCollector(cfg.Xray.StatsPort)
-	if statsErr != nil {
-		log.Printf("警告: 流量采集模块初始化失败: %v", statsErr)
-	}
-	if statsCollector != nil {
-		col := traffic.NewCollector(db, statsCollector)
-		cronRunner := cron.New()
-		cronRunner.AddFunc("@every 60s", func() { col.Collect() })
-		cronRunner.AddFunc("@every 1h", func() { col.Archive() })
-		cronRunner.AddFunc("@daily", func() { col.CheckExpired() })
-		cronRunner.Start()
-		defer cronRunner.Stop()
-		log.Println("流量采集 + 定时任务已启动")
-	}
-
-	gin.SetMode(cfg.Server.Mode)
+	gin.SetMode("release")
 	r := gin.Default()
 
 	// ---- 公开路由 ----
-	r.POST("/api/auth/register", authH.Register)
+	r.GET("/api/auth/setup", authH.SetupCheck)
+	r.POST("/api/auth/setup", authH.Setup)
 	r.POST("/api/auth/login", authH.Login)
-	r.POST("/api/auth/admin-login", authH.AdminLogin)
-	r.GET("/api/auth/verify-email", authH.VerifyEmail)
-	r.POST("/api/auth/forgot-password", authH.ForgotPassword)
-	r.POST("/api/auth/reset-password", authH.ResetPassword)
-	r.GET("/api/sub", subH.Serve)
-	r.POST("/api/payment/alipay/notify", payH.AlipayNotify)
+	// Subscription endpoint (public, works by client ID)
+	r.GET("/api/sub", func(c *gin.Context) {
+		c.String(http.StatusOK, "subscription endpoint (TODO)")
+	})
 
-	// ---- 用户路由 ----
-	user := r.Group("/api")
-	user.Use(jwtMgr.UserRequired())
+	// ---- 认证路由 ----
+	api := r.Group("/api")
+	api.Use(jwtMgr.Required())
 	{
-		user.GET("/plans", func(c *gin.Context) { adminH.ListPlans(c) })
-		user.GET("/me", apiH.Me)
-		user.POST("/orders", apiH.CreateOrder)
-		user.GET("/orders", apiH.ListOrders)
-		user.GET("/orders/:id/status", payH.GetOrderStatus)
-		user.GET("/accounts", apiH.ListAccounts)
-		user.POST("/send-verify-email", authH.SendVerifyEmail)
-	}
+		// Nodes (placeholder — will be replaced in task 17)
+		api.GET("/nodes", func(c *gin.Context) { c.JSON(http.StatusOK, []any{}) })
+		api.GET("/nodes/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{}) })
+		api.POST("/nodes", func(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"id": "new"}) })
+		api.PUT("/nodes/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ok"}) })
+		api.DELETE("/nodes/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ok"}) })
+		api.POST("/nodes/:id/test", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"success": true}) })
+		api.GET("/nodes/:id/status", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "unknown"}) })
 
-	// ---- 管理路由 ----
-	adm := r.Group("/api/admin")
-	adm.Use(jwtMgr.AdminRequired())
-	{
-		adm.GET("/dashboard", adminH.Dashboard)
-		adm.GET("/users", adminH.ListUsers)
-		adm.GET("/users/:id", adminH.GetUser)
-		adm.POST("/users/:id/disable", adminH.DisableUser)
-		adm.POST("/users/:id/enable", adminH.EnableUser)
-		adm.GET("/plans", adminH.ListPlans)
-		adm.POST("/plans", adminH.CreatePlan)
-		adm.PUT("/plans/:id", adminH.UpdatePlan)
-		adm.DELETE("/plans/:id", adminH.DeletePlan)
-		adm.GET("/orders", adminH.ListOrders)
-		adm.POST("/orders/:id/cancel", adminH.CancelOrder)
-		adm.GET("/traffic/summary", adminH.TrafficSummary)
-		adm.GET("/traffic/accounts", adminH.TrafficByAccount)
-		adm.GET("/traffic/timeline", adminH.TrafficTimeline)
-		adm.GET("/audit-logs", adminH.ListAuditLogs)
+		// Inbounds (placeholder — will be replaced in task 10)
+		api.GET("/inbounds", func(c *gin.Context) { c.JSON(http.StatusOK, []any{}) })
+		api.POST("/inbounds", func(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"id": "new"}) })
+		api.PUT("/inbounds/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ok"}) })
+		api.DELETE("/inbounds/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ok"}) })
+		api.POST("/inbounds/:id/deploy", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "deployed"}) })
+		api.GET("/inbounds/templates", func(c *gin.Context) { c.JSON(http.StatusOK, []any{}) })
+
+		// Clients (placeholder — will be replaced in task 11)
+		api.GET("/clients", func(c *gin.Context) { c.JSON(http.StatusOK, []any{}) })
+		api.POST("/clients", func(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"id": "new"}) })
+		api.PUT("/clients/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ok"}) })
+		api.DELETE("/clients/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ok"}) })
+		api.POST("/clients/:id/reset", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"uuid": "new-uuid"}) })
+		api.PUT("/clients/:id/inbounds", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ok"}) })
+
+		// Traffic (placeholder — will be replaced in task 14)
+		api.GET("/traffic/overview", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"node_count": 0, "active_clients": 0, "today_up_bytes": 0, "today_down_bytes": 0})
+		})
+		api.GET("/traffic/clients/:id", func(c *gin.Context) { c.JSON(http.StatusOK, []any{}) })
+		api.GET("/traffic/nodes/:id", func(c *gin.Context) { c.JSON(http.StatusOK, []any{}) })
+
+		// System
+		api.GET("/system/info", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"version": "2.0.0", "os": runtime.GOOS})
+		})
+		api.PUT("/system/password", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"message": "password updated (TODO)"})
+		})
+		api.POST("/system/backup", func(c *gin.Context) {
+			c.File(cfg.DBPath())
+		})
 	}
 
 	// ---- SPA fallback ----
 	distFS, _ := fs.Sub(web.Dist, "dist")
 	fileServer := http.FileServer(http.FS(distFS))
 	r.NoRoute(func(c *gin.Context) {
-		// Try to serve the file; if 404, fall back to index.html for SPA routing
 		path := c.Request.URL.Path
 		if path != "/" {
-			// Check if file exists
-			f, err := distFS.Open(path[1:]) // strip leading /
+			f, err := distFS.Open(path[1:])
 			if err != nil {
-				// Not a real file — serve index.html for SPA client-side routing
 				c.Request.URL.Path = "/"
 				fileServer.ServeHTTP(c.Writer, c.Request)
 				return
@@ -221,6 +131,11 @@ func main() {
 		fileServer.ServeHTTP(c.Writer, c.Request)
 	})
 
-	log.Printf("BorderX Panel 启动在 :%d\n", cfg.Server.Port)
-	r.Run(fmt.Sprintf(":%d", cfg.Server.Port))
+	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+	log.Printf("BorderX Panel v2.0.0 启动: http://%s", addr)
+	log.Printf("数据目录: %s", cfg.Data.Dir)
+	log.Printf("数据库: %s", cfg.DBPath())
+	if err := r.Run(addr); err != nil {
+		log.Fatalf("启动失败: %v", err)
+	}
 }
