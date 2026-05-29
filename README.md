@@ -183,6 +183,18 @@ journalctl -u borderx-panel -f
 systemctl restart borderx-panel
 ```
 
+## 卸载
+
+### Linux
+```bash
+curl -sL https://raw.githubusercontent.com/rosecat2359/BorderX/main/deploy/uninstall.sh | bash
+```
+
+### Windows (PowerShell 管理员)
+```powershell
+irm https://raw.githubusercontent.com/rosecat2359/BorderX/main/deploy/uninstall.ps1 | iex
+```
+
 ## License
 
 MIT
