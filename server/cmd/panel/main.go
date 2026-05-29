@@ -168,7 +168,22 @@ func main() {
 
 		// System
 		api.GET("/system/info", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"version": "2.0.0", "os": runtime.GOOS})
+			var nodeCount, clientCount, inboundCount int
+			var dbSize int64
+			db.QueryRow("SELECT count(*) FROM nodes WHERE is_active=1").Scan(&nodeCount)
+			db.QueryRow("SELECT count(*) FROM clients WHERE is_active=1").Scan(&clientCount)
+			db.QueryRow("SELECT count(*) FROM inbounds WHERE is_active=1").Scan(&inboundCount)
+			if fi, err := os.Stat(cfg.DBPath()); err == nil {
+				dbSize = fi.Size()
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"version":       "2.0.0",
+				"os":            runtime.GOOS,
+				"node_count":    nodeCount,
+				"client_count":  clientCount,
+				"inbound_count": inboundCount,
+				"db_size":       dbSize,
+			})
 		})
 		api.PUT("/system/password", func(c *gin.Context) {
 			var req struct {
@@ -185,6 +200,35 @@ func main() {
 		api.POST("/system/backup", func(c *gin.Context) {
 			c.Header("Content-Disposition", "attachment; filename=borderx-backup.db")
 			c.File(cfg.DBPath())
+		})
+		api.POST("/system/restore", func(c *gin.Context) {
+			file, err := c.FormFile("file")
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "请上传备份文件"})
+				return
+			}
+			tmpPath := cfg.DBPath() + ".restore"
+			if err := c.SaveUploadedFile(file, tmpPath); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "保存失败"})
+				return
+			}
+			f, err := os.Open(tmpPath)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "读取失败"})
+				return
+			}
+			header := make([]byte, 16)
+			f.Read(header)
+			f.Close()
+			if string(header) != "SQLite format 3\x00" {
+				os.Remove(tmpPath)
+				c.JSON(http.StatusBadRequest, gin.H{"error": "不是有效的 SQLite 数据库文件"})
+				return
+			}
+			db.Close()
+			os.Rename(tmpPath, cfg.DBPath())
+			c.JSON(http.StatusOK, gin.H{"message": "数据库已恢复，面板即将重启"})
+			go func() { os.Exit(0) }()
 		})
 	}
 
