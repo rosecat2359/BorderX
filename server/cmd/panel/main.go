@@ -62,6 +62,16 @@ func main() {
 		log.Fatalf("数据库迁移失败: %v", err)
 	}
 
+	// 自动创建默认本地节点（如果没有任何节点）
+	var nodeCount int
+	db.QueryRow("SELECT count(*) FROM nodes").Scan(&nodeCount)
+	if nodeCount == 0 {
+		defaultNodeID := "00000000-0000-0000-0000-000000000001"
+		db.Exec(`INSERT OR IGNORE INTO nodes (id, name, host, ssh_port, ssh_user, os, region, is_active)
+			 VALUES (?, '本机', '127.0.0.1', 22, 'root', ?, '本地', 1)`, defaultNodeID, runtime.GOOS)
+		log.Println("[init] 已创建默认本地节点: 本机 (127.0.0.1)")
+	}
+
 	jwtMgr := auth.NewJWTManager(cfg.JWT.Secret, cfg.JWT.ExpireHour)
 	authH := &auth.Handler{DB: db, JWT: jwtMgr}
 
