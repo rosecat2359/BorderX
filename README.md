@@ -10,10 +10,11 @@
 |---|---|
 | 入站管理 | VLESS Reality / VMess WS / Trojan TLS，一键创建并部署到节点 |
 | 客户端管理 | 全局客户端，跨节点使用，流量限制 + 到期时间 + UUID 重置 |
-| 节点管理 | 本机 / SSH 远程节点，连接测试 + 状态监控 |
-| 流量统计 | 按客户端/节点的流量图表，超限自动禁用 |
+| 节点管理 | 本机 / SSH 远程节点，连接测试 + 自动地区检测 + 状态监控 |
+| 流量统计 | 实时仪表盘（30秒自动刷新），按客户端/节点流量图表，超限自动禁用 |
 | 订阅链接 | 自动生成 v2ray 格式订阅，按节点控制可见性，一键复制 / QR 码 |
-| 系统 | 单管理员，暗色主题 Web 面板，数据备份/恢复 |
+| 系统运维 | 单管理员、数据备份/恢复、交互式安装/卸载、首次启动自动创建本地节点 |
+| 跨平台 | Windows / Linux amd64/arm64，单二进制部署，暗色主题 Web 面板 |
 
 ## 技术栈
 
@@ -37,7 +38,9 @@
 curl -sL https://raw.githubusercontent.com/rosecat2359/BorderX/main/deploy/install.sh | bash
 ```
 
-脚本自动完成：下载二进制 → 创建 systemd 服务 → 启动面板。
+脚本交互式引导：安装目录、数据目录、面板端口、是否安装 Xray-core。首次启动自动创建本地节点。
+
+安装后访问 `http://<IP>:8080`，首次启动需设置管理员密码。
 
 ### Windows 安装
 
@@ -165,9 +168,10 @@ GET    /api/traffic/overview     总览（节点数/客户端数/今日流量）
 GET    /api/traffic/clients/:id  客户端流量趋势（7天）
 
 # 系统
-GET    /api/system/info          版本 + OS
+GET    /api/system/info          版本 + OS + 节点/客户端/入站数量 + 数据库大小
 PUT    /api/system/password      修改管理员密码
-POST   /api/system/backup        导出 SQLite 备份
+POST   /api/system/backup        导出 SQLite 数据库备份
+POST   /api/system/restore       上传备份文件恢复数据库
 ```
 
 ## 管理命令
