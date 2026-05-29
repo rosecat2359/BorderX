@@ -1,1 +1,8 @@
 docs/superpowers
+*.exe
+server/panel
+server/dist/
+web/dist/
+node_modules/
+data/
+
