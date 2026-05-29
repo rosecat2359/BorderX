@@ -13,6 +13,7 @@ import (
 	"github.com/borderx/panel/internal/auth"
 	"github.com/borderx/panel/internal/config"
 	"github.com/borderx/panel/internal/store"
+	"github.com/borderx/panel/internal/sub"
 	"github.com/borderx/panel/web"
 )
 
@@ -62,9 +63,8 @@ func main() {
 	r.POST("/api/auth/setup", authH.Setup)
 	r.POST("/api/auth/login", authH.Login)
 	// Subscription endpoint (public, works by client ID)
-	r.GET("/api/sub", func(c *gin.Context) {
-		c.String(http.StatusOK, "subscription endpoint (TODO)")
-	})
+	subH := &sub.Handler{DB: db}
+	r.GET("/api/sub", subH.Serve)
 
 	// ---- 认证路由 ----
 	api := r.Group("/api")

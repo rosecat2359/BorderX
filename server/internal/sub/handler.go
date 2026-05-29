@@ -15,64 +15,73 @@ type Handler struct {
 }
 
 func (h *Handler) Serve(c *gin.Context) {
-	token := c.Query("token")
-	if token == "" {
-		c.String(http.StatusBadRequest, "missing token")
+	clientID := c.Query("client")
+	if clientID == "" {
+		c.String(http.StatusBadRequest, "missing client parameter")
 		return
 	}
 
-	var userID string
-	err := h.DB.QueryRow("SELECT user_id FROM sub_tokens WHERE token = $1", token).Scan(&userID)
+	var clientUUID, flow string
+	err := h.DB.QueryRow(
+		"SELECT uuid, flow FROM clients WHERE id = ? AND is_active = 1",
+		clientID,
+	).Scan(&clientUUID, &flow)
 	if err == sql.ErrNoRows {
-		c.String(http.StatusNotFound, "invalid token")
+		c.String(http.StatusNotFound, "client not found or inactive")
 		return
 	}
 	if err != nil {
-		c.String(http.StatusInternalServerError, "server error")
+		c.String(http.StatusInternalServerError, "query failed")
 		return
 	}
 
-	// 更新最后访问时间
-	h.DB.Exec("UPDATE sub_tokens SET last_accessed_at = now() WHERE token = $1", token)
-
-	// 查所有活跃的 VPN 账号
 	rows, err := h.DB.Query(
-		`SELECT protocol, uuid, password FROM vpn_accounts
-		 WHERE user_id = $1 AND status = 'active'`, userID)
+		`SELECT n.host, n.name, i.protocol, i.port, i.tag
+		 FROM client_inbounds ci
+		 JOIN inbounds i ON ci.inbound_id = i.id
+		 JOIN nodes n ON i.node_id = n.id
+		 WHERE ci.client_id = ? AND ci.is_visible = 1 AND i.is_active = 1 AND n.is_active = 1`,
+		clientID,
+	)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "query error")
+		c.String(http.StatusInternalServerError, "query failed")
 		return
 	}
 	defer rows.Close()
 
-	// v2ray 订阅格式：每行一个分享链接，整体 base64 编码
 	var links []string
 	for rows.Next() {
-		var protocol, uuid, password string
-		rows.Scan(&protocol, &uuid, &password)
-
-		// MVP: server IP 从 host header 获取，后续可用节点表替换
-		host := c.Request.Host
-		if idx := strings.Index(host, ":"); idx != -1 {
-			host = host[:idx]
-		}
+		var host, nodeName, protocol, tag string
+		var port int
+		rows.Scan(&host, &nodeName, &protocol, &port, &tag)
+		label := fmt.Sprintf("%s-%s", nodeName, tag)
 
 		switch protocol {
 		case "vless":
-			// VLESS Reality 分享链接
-			link := fmt.Sprintf("vless://%s@%s:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.microsoft.com&fp=chrome&type=tcp#BorderX-VLESS", uuid, host)
+			link := fmt.Sprintf(
+				"vless://%s@%s:%d?encryption=none&flow=%s&security=reality&type=tcp#%s",
+				clientUUID, host, port, flow, label,
+			)
 			links = append(links, link)
 		case "vmess":
-			link := fmt.Sprintf("vmess://%s@%s:10001?path=/ws&security=none&type=ws#BorderX-VMESS", uuid, host)
+			link := fmt.Sprintf(
+				"vmess://%s@%s:%d?path=/ws&security=none&type=ws#%s",
+				clientUUID, host, port, label,
+			)
 			links = append(links, link)
 		case "trojan":
-			link := fmt.Sprintf("trojan://%s@%s:10002?security=tls&type=tcp#BorderX-Trojan", password, host)
+			var pw string
+			h.DB.QueryRow("SELECT password FROM clients WHERE id = ?", clientID).Scan(&pw)
+			link := fmt.Sprintf(
+				"trojan://%s@%s:%d?security=tls&type=tcp#%s",
+				pw, host, port, label,
+			)
 			links = append(links, link)
 		}
 	}
 
 	if len(links) == 0 {
-		c.String(http.StatusOK, "No active accounts")
+		c.String(http.StatusOK, "")
 		return
 	}
 
