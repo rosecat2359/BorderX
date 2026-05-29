@@ -10,10 +10,17 @@ import (
 	"runtime"
 
 	"github.com/gin-gonic/gin"
+	"github.com/robfig/cron/v3"
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/borderx/panel/internal/auth"
+	"github.com/borderx/panel/internal/client"
 	"github.com/borderx/panel/internal/config"
+	"github.com/borderx/panel/internal/inbound"
 	"github.com/borderx/panel/internal/store"
 	"github.com/borderx/panel/internal/sub"
+	"github.com/borderx/panel/internal/traffic"
+	"github.com/borderx/panel/internal/xray"
 	"github.com/borderx/panel/web"
 )
 
@@ -55,6 +62,33 @@ func main() {
 	jwtMgr := auth.NewJWTManager(cfg.JWT.Secret, cfg.JWT.ExpireHour)
 	authH := &auth.Handler{DB: db, JWT: jwtMgr}
 
+	// Initialize Xray Manager (optional — may fail if xray binary not found)
+	xrayMgr, xrayErr := xray.NewManager(cfg.Xray.ConfigPath)
+	if xrayErr != nil {
+		log.Printf("警告: Xray 管理模块初始化失败: %v（VPN 功能不可用）", xrayErr)
+	}
+
+	// Create handlers
+	inboundH := &inbound.Handler{DB: db, Xray: xrayMgr}
+	clientH := &client.Handler{DB: db, Xray: xrayMgr}
+	subH := &sub.Handler{DB: db}
+
+	// Start traffic collector if Xray is available
+	if xrayMgr != nil {
+		statsCollector, statsErr := xray.NewStatsCollector(cfg.Xray.StatsPort)
+		if statsErr != nil {
+			log.Printf("警告: 流量采集初始化失败: %v", statsErr)
+		} else {
+			col := traffic.NewCollector(db, statsCollector)
+			cronRunner := cron.New()
+			cronRunner.AddFunc("@every 60s", func() { col.Collect() })
+			cronRunner.AddFunc("@daily", func() { col.Archive(); col.CheckExpired() })
+			cronRunner.Start()
+			defer cronRunner.Stop()
+			log.Println("流量采集 + 定时任务已启动")
+		}
+	}
+
 	gin.SetMode("release")
 	r := gin.Default()
 
@@ -63,53 +97,88 @@ func main() {
 	r.POST("/api/auth/setup", authH.Setup)
 	r.POST("/api/auth/login", authH.Login)
 	// Subscription endpoint (public, works by client ID)
-	subH := &sub.Handler{DB: db}
 	r.GET("/api/sub", subH.Serve)
 
 	// ---- 认证路由 ----
 	api := r.Group("/api")
 	api.Use(jwtMgr.Required())
 	{
-		// Nodes (placeholder — will be replaced in task 17)
+		// Inbounds
+		api.GET("/inbounds", inboundH.List)
+		api.POST("/inbounds", inboundH.Create)
+		api.PUT("/inbounds/:id", inboundH.Update)
+		api.DELETE("/inbounds/:id", inboundH.Delete)
+		api.POST("/inbounds/:id/deploy", inboundH.Deploy)
+		api.GET("/inbounds/templates", inboundH.Templates)
+
+		// Clients
+		api.GET("/clients", clientH.List)
+		api.POST("/clients", clientH.Create)
+		api.PUT("/clients/:id", clientH.Update)
+		api.DELETE("/clients/:id", clientH.Delete)
+		api.POST("/clients/:id/reset", clientH.Reset)
+		api.PUT("/clients/:id/inbounds", clientH.UpdateInbounds)
+
+		// Nodes (still placeholder — task 17)
 		api.GET("/nodes", func(c *gin.Context) { c.JSON(http.StatusOK, []any{}) })
 		api.GET("/nodes/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{}) })
-		api.POST("/nodes", func(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"id": "new"}) })
+		api.POST("/nodes", func(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"id": "local"}) })
 		api.PUT("/nodes/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ok"}) })
 		api.DELETE("/nodes/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ok"}) })
 		api.POST("/nodes/:id/test", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"success": true}) })
-		api.GET("/nodes/:id/status", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "unknown"}) })
+		api.GET("/nodes/:id/status", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "online"}) })
 
-		// Inbounds (placeholder — will be replaced in task 10)
-		api.GET("/inbounds", func(c *gin.Context) { c.JSON(http.StatusOK, []any{}) })
-		api.POST("/inbounds", func(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"id": "new"}) })
-		api.PUT("/inbounds/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ok"}) })
-		api.DELETE("/inbounds/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ok"}) })
-		api.POST("/inbounds/:id/deploy", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "deployed"}) })
-		api.GET("/inbounds/templates", func(c *gin.Context) { c.JSON(http.StatusOK, []any{}) })
-
-		// Clients (placeholder — will be replaced in task 11)
-		api.GET("/clients", func(c *gin.Context) { c.JSON(http.StatusOK, []any{}) })
-		api.POST("/clients", func(c *gin.Context) { c.JSON(http.StatusCreated, gin.H{"id": "new"}) })
-		api.PUT("/clients/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ok"}) })
-		api.DELETE("/clients/:id", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ok"}) })
-		api.POST("/clients/:id/reset", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"uuid": "new-uuid"}) })
-		api.PUT("/clients/:id/inbounds", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"message": "ok"}) })
-
-		// Traffic (placeholder — will be replaced in task 14)
+		// Traffic
 		api.GET("/traffic/overview", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"node_count": 0, "active_clients": 0, "today_up_bytes": 0, "today_down_bytes": 0})
+			var nodeCount, activeClients int
+			var todayUp, todayDown int64
+			db.QueryRow("SELECT count(*) FROM nodes WHERE is_active=1").Scan(&nodeCount)
+			db.QueryRow("SELECT count(*) FROM clients WHERE is_active=1").Scan(&activeClients)
+			db.QueryRow("SELECT COALESCE(SUM(up_bytes),0) FROM traffic_hourly WHERE hour >= datetime('now','start of day')").Scan(&todayUp)
+			db.QueryRow("SELECT COALESCE(SUM(down_bytes),0) FROM traffic_hourly WHERE hour >= datetime('now','start of day')").Scan(&todayDown)
+			c.JSON(http.StatusOK, gin.H{
+				"node_count": nodeCount, "active_clients": activeClients,
+				"today_up_bytes": todayUp, "today_down_bytes": todayDown,
+			})
 		})
-		api.GET("/traffic/clients/:id", func(c *gin.Context) { c.JSON(http.StatusOK, []any{}) })
-		api.GET("/traffic/nodes/:id", func(c *gin.Context) { c.JSON(http.StatusOK, []any{}) })
+		api.GET("/traffic/clients/:id", func(c *gin.Context) {
+			rows, _ := db.Query(
+				"SELECT up_bytes, down_bytes, hour FROM traffic_hourly WHERE client_id=? AND hour >= datetime('now','-7 days') ORDER BY hour",
+				c.Param("id"),
+			)
+			if rows == nil {
+				c.JSON(http.StatusOK, []any{})
+				return
+			}
+			defer rows.Close()
+			var result []gin.H
+			for rows.Next() {
+				var up, down int64
+				var hour string
+				rows.Scan(&up, &down, &hour)
+				result = append(result, gin.H{"up_bytes": up, "down_bytes": down, "hour": hour})
+			}
+			c.JSON(http.StatusOK, result)
+		})
 
 		// System
 		api.GET("/system/info", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"version": "2.0.0", "os": runtime.GOOS})
 		})
 		api.PUT("/system/password", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"message": "password updated (TODO)"})
+			var req struct {
+				Password string `json:"password" binding:"required,min=6"`
+			}
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "密码至少6位"})
+				return
+			}
+			hash, _ := bcrypt.GenerateFromPassword([]byte(req.Password), 12)
+			db.Exec("UPDATE admin SET password=?", string(hash))
+			c.JSON(http.StatusOK, gin.H{"message": "密码已更新"})
 		})
 		api.POST("/system/backup", func(c *gin.Context) {
+			c.Header("Content-Disposition", "attachment; filename=borderx-backup.db")
 			c.File(cfg.DBPath())
 		})
 	}
