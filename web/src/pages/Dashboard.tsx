@@ -25,7 +25,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     load()
-    const timer = setInterval(load, 30000) // refresh every 30s
+    const timer = setInterval(load, 5000) // 5 秒实时刷新
     return () => clearInterval(timer)
   }, [load])
 
@@ -40,7 +40,7 @@ export default function Dashboard() {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" sx={{ fontWeight: 600 }}>仪表盘</Typography>
-        <Typography variant="body2" color="text.secondary">每 30 秒自动刷新 · 运行 {Math.floor(uptime / 60)} 分 {uptime % 60} 秒</Typography>
+        <Typography variant="body2" color="text.secondary">每 5 秒实时刷新 · 运行 {Math.floor(uptime / 60)} 分 {uptime % 60} 秒</Typography>
       </Box>
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {cards.map((card) => (
