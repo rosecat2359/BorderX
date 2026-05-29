@@ -80,7 +80,7 @@ export const traffic = {
 export const system = {
   info: () => api.get('/system/info'),
   password: (password: string) => api.put('/system/password', { password }),
-  backup: () => api.post('/system/backup'),
+  backup: () => api.post('/system/backup', {}, { responseType: 'blob' }),
 }
 
 export default api
