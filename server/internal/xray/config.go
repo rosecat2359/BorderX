@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"runtime"
 )
 
 // XrayConfig represents the top-level Xray JSON configuration.
@@ -91,7 +93,7 @@ func (m *Manager) save() error {
 	if err := os.Rename(tmpPath, m.configPath); err != nil {
 		return err
 	}
-	return ReloadService()
+	return reloadXray()
 }
 
 // AddClient adds a client to the inbound with the given tag.
@@ -256,4 +258,19 @@ func (m *Manager) ListClientEmails(tag string) []string {
 		return emails
 	}
 	return nil
+}
+
+// reloadXray reloads the local Xray service depending on OS.
+func reloadXray() error {
+	switch runtime.GOOS {
+	case "linux":
+		if err := exec.Command("systemctl", "reload", "xray").Run(); err != nil {
+			return exec.Command("systemctl", "restart", "xray").Run()
+		}
+		return nil
+	case "windows":
+		return exec.Command("powershell", "-Command", "Restart-Service", "Xray").Run()
+	default:
+		return fmt.Errorf("unsupported OS: %s", runtime.GOOS)
+	}
 }
