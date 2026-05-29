@@ -6,7 +6,7 @@ Write-Host "=== BorderX Panel v2.0 安装 ===" -ForegroundColor Cyan
 
 New-Item -ItemType Directory -Force -Path $InstallDir, $DataDir | Out-Null
 
-$Url = "https://github.com/borderx/panel/releases/latest/download/borderx-panel-windows-amd64.exe"
+$Url = "https://github.com/rosecat2359/BorderX/releases/latest/download/borderx-panel-windows-amd64.exe"
 $OutPath = "$InstallDir\borderx-panel.exe"
 Write-Host "下载: $Url"
 Invoke-WebRequest -Uri $Url -OutFile $OutPath

@@ -18,7 +18,7 @@ echo "架构: ${BIN_ARCH}"
 mkdir -p "$DATA_DIR" "$CONFIG_DIR"
 
 # Download binary
-BIN_URL="https://github.com/borderx/panel/releases/latest/download/borderx-panel-linux-${BIN_ARCH}"
+BIN_URL="https://github.com/rosecat2359/BorderX/releases/latest/download/borderx-panel-linux-${BIN_ARCH}"
 echo "下载: $BIN_URL"
 curl -sL "$BIN_URL" -o "${INSTALL_DIR}/borderx-panel"
 chmod +x "${INSTALL_DIR}/borderx-panel"
