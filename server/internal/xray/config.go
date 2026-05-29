@@ -164,3 +164,96 @@ func (m *Manager) RemoveClient(tag, email string) error {
 func (m *Manager) Config() *XrayConfig {
 	return m.config
 }
+
+// EnsureInbound makes sure an inbound with the given tag exists.
+// If it already exists, nothing is changed. Otherwise it is appended.
+func (m *Manager) EnsureInbound(tag, protocol string, port int, settingsJSON, streamJSON string) error {
+	for i := range m.config.Inbounds {
+		if m.config.Inbounds[i].Tag == tag {
+			return nil // already exists
+		}
+	}
+	in := Inbound{
+		Tag:            tag,
+		Port:           port,
+		Protocol:       protocol,
+		Listen:         "0.0.0.0",
+		Settings:       json.RawMessage(settingsJSON),
+		StreamSettings: json.RawMessage(streamJSON),
+		Sniffing:       json.RawMessage(`{"enabled":true,"destOverride":["http","tls"]}`),
+	}
+	m.config.Inbounds = append(m.config.Inbounds, in)
+	return m.save()
+}
+
+// RemoveInbound removes the inbound with the given tag.
+func (m *Manager) RemoveInbound(tag string) error {
+	filtered := make([]Inbound, 0, len(m.config.Inbounds))
+	for _, in := range m.config.Inbounds {
+		if in.Tag != tag {
+			filtered = append(filtered, in)
+		}
+	}
+	m.config.Inbounds = filtered
+	return m.save()
+}
+
+// SyncClients replaces ALL clients in the given inbound with the provided list.
+// For vless: each entry uses uuid and email. flow defaults to "xtls-rprx-vision".
+// For vmess: each entry uses uuid and email, alterId=0.
+// For trojan: each entry uses password (from passwords slice) and email.
+func (m *Manager) SyncClients(tag, protocol string, uuids, emails, passwords []string) error {
+	for i := range m.config.Inbounds {
+		in := &m.config.Inbounds[i]
+		if in.Tag != tag {
+			continue
+		}
+		switch protocol {
+		case "vless":
+			clients := make([]VLESSClient, len(uuids))
+			for j, uid := range uuids {
+				clients[j] = VLESSClient{ID: uid, Flow: "xtls-rprx-vision", Email: emails[j]}
+			}
+			data, _ := json.Marshal(map[string]interface{}{"clients": clients, "decryption": "none"})
+			in.Settings = data
+		case "vmess":
+			clients := make([]VMessClient, len(uuids))
+			for j, uid := range uuids {
+				clients[j] = VMessClient{ID: uid, AlterID: 0, Email: emails[j]}
+			}
+			data, _ := json.Marshal(map[string]interface{}{"clients": clients})
+			in.Settings = data
+		case "trojan":
+			clients := make([]TrojanClient, len(passwords))
+			for j, pw := range passwords {
+				clients[j] = TrojanClient{Password: pw, Email: emails[j]}
+			}
+			data, _ := json.Marshal(map[string]interface{}{"clients": clients})
+			in.Settings = data
+		}
+	}
+	return m.save()
+}
+
+// ListClientEmails returns all client emails for a given inbound tag.
+func (m *Manager) ListClientEmails(tag string) []string {
+	for _, in := range m.config.Inbounds {
+		if in.Tag != tag {
+			continue
+		}
+		var wrapper struct {
+			Clients []struct {
+				Email string `json:"email"`
+			} `json:"clients"`
+		}
+		if err := json.Unmarshal(in.Settings, &wrapper); err != nil {
+			return nil
+		}
+		emails := make([]string, len(wrapper.Clients))
+		for i, c := range wrapper.Clients {
+			emails[i] = c.Email
+		}
+		return emails
+	}
+	return nil
+}
