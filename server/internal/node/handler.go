@@ -174,6 +174,21 @@ func (h *Handler) Test(c *gin.Context) {
 	}
 	out, err := h.SSH.Exec(id, "uname -a")
 	h.DB.Exec("UPDATE nodes SET last_seen_at=datetime('now') WHERE id=?", id)
+
+	// Auto-detect region via geo-IP on remote node
+	regionOut, _ := h.SSH.Exec(id, "curl -s --connect-timeout 3 https://ipapi.co/json/ 2>/dev/null || curl -s --connect-timeout 3 https://ipinfo.io/json 2>/dev/null || echo '{}'")
+	if regionOut != "" {
+		country := extractJSONField(regionOut, "country")
+		city := extractJSONField(regionOut, "city")
+		if country != "" {
+			region := country
+			if city != "" {
+				region = city + ", " + country
+			}
+			h.DB.Exec("UPDATE nodes SET region=? WHERE id=?", region, id)
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"success": err == nil, "output": out})
 }
 
@@ -200,4 +215,27 @@ func (h *Handler) Status(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"status": status, "os": osName})
+}
+
+// extractJSONField does a simple substring-based extraction of a string field from a JSON object.
+func extractJSONField(jsonStr, field string) string {
+	key := `"` + field + `":"`
+	for idx := 0; idx < len(jsonStr); idx++ {
+		match := true
+		for j := 0; j < len(key); j++ {
+			if idx+j >= len(jsonStr) || jsonStr[idx+j] != key[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			start := idx + len(key)
+			end := start
+			for end < len(jsonStr) && jsonStr[end] != '"' {
+				end++
+			}
+			return jsonStr[start:end]
+		}
+	}
+	return ""
 }
