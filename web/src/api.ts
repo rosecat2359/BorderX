@@ -1,58 +1,86 @@
 import axios from 'axios'
 
 const api = axios.create({ baseURL: '/api' })
-
 api.interceptors.request.use((cfg) => {
   const token = localStorage.getItem('token')
   if (token) cfg.headers.Authorization = `Bearer ${token}`
   return cfg
 })
-
 api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
       localStorage.removeItem('token')
-      window.location.href = '/login'
+      if (window.location.pathname !== '/login') window.location.href = '/login'
     }
     return Promise.reject(err)
-  }
+  },
 )
 
-export interface User { id: string; email: string; status: string; created_at: string }
-export interface Plan { id: string; name: string; price_cents: number; duration_days: number; traffic_limit_gb: number; max_devices: number; is_active: boolean }
-
 export const auth = {
-  register: (email: string, password: string) => api.post('/auth/register', { email, password }),
-  login: (email: string, password: string) => api.post('/auth/login', { email, password }),
-  adminLogin: (username: string, password: string) => api.post('/auth/admin-login', { username, password }),
+  setupCheck: () => api.get('/auth/setup'),
+  setup: (password: string) => api.post('/auth/setup', { password }),
+  login: (password: string) => api.post('/auth/login', { password }),
 }
 
-export const plans = { list: () => api.get<Plan[]>('/plans') }
-
-export const orders = {
-  create: (planID: string, protocol?: string) =>
-    api.post('/orders', { plan_id: planID, protocol }),
-  list: () => api.get('/orders'),
-  status: (id: string) => api.get<{ status: string }>(`/orders/${id}/status`),
+export interface Node {
+  id: string; name: string; host: string; ssh_port: number; os: string
+  region: string; is_active: boolean; status?: string
+  inbound_count?: number; client_count?: number; last_seen_at?: string
+}
+export interface Inbound {
+  id: string; node_id: string; tag: string; protocol: string; port: number
+  listen: string; sniffing: boolean; is_active: boolean
+  node_name?: string; client_count?: number
+}
+export interface Client {
+  id: string; name: string; uuid: string; flow: string
+  total_limit: number; total_used?: number
+  expiry_at?: string; is_active: boolean
+  inbounds?: ClientInbound[]
+}
+export interface ClientInbound {
+  client_id: string; inbound_id: string; is_visible: boolean
+  node_name?: string; protocol?: string; port?: number; host?: string
 }
 
-export const admin = {
-  dashboard: () => api.get('/admin/dashboard'),
-  listUsers: (params?: any) => api.get('/admin/users', { params }),
-  getUser: (id: string) => api.get(`/admin/users/${id}`),
-  disableUser: (id: string) => api.post(`/admin/users/${id}/disable`),
-  enableUser: (id: string) => api.post(`/admin/users/${id}/enable`),
-  listPlans: () => api.get<Plan[]>('/admin/plans'),
-  createPlan: (data: Partial<Plan>) => api.post('/admin/plans', data),
-  updatePlan: (id: string, data: Partial<Plan>) => api.put(`/admin/plans/${id}`, data),
-  deletePlan: (id: string) => api.delete(`/admin/plans/${id}`),
-  listOrders: (params?: any) => api.get('/admin/orders', { params }),
-  cancelOrder: (id: string) => api.post(`/admin/orders/${id}/cancel`),
-  getTrafficSummary: () => api.get('/admin/traffic/summary'),
-  getTrafficAccounts: (days: number) => api.get('/admin/traffic/accounts', { params: { days } }),
-  getTrafficTimeline: () => api.get('/admin/traffic/timeline'),
-  getAuditLogs: (page: number) => api.get('/admin/audit-logs', { params: { page } }),
+export const nodes = {
+  list: () => api.get<Node[]>('/nodes'),
+  get: (id: string) => api.get<Node>(`/nodes/${id}`),
+  create: (data: any) => api.post('/nodes', data),
+  update: (id: string, data: any) => api.put(`/nodes/${id}`, data),
+  delete: (id: string) => api.delete(`/nodes/${id}`),
+  test: (id: string) => api.post(`/nodes/${id}/test`),
+  status: (id: string) => api.get(`/nodes/${id}/status`),
+}
+
+export const inbounds = {
+  list: (nodeId?: string) => api.get<Inbound[]>('/inbounds', { params: nodeId ? { node_id: nodeId } : {} }),
+  create: (data: any) => api.post('/inbounds', data),
+  update: (id: string, data: any) => api.put(`/inbounds/${id}`, data),
+  delete: (id: string) => api.delete(`/inbounds/${id}`),
+  deploy: (id: string) => api.post(`/inbounds/${id}/deploy`),
+}
+
+export const clients = {
+  list: () => api.get<Client[]>('/clients'),
+  create: (data: any) => api.post('/clients', data),
+  update: (id: string, data: any) => api.put(`/clients/${id}`, data),
+  delete: (id: string) => api.delete(`/clients/${id}`),
+  reset: (id: string) => api.post(`/clients/${id}/reset`),
+  updateInbounds: (id: string, data: any) => api.put(`/clients/${id}/inbounds`, data),
+}
+
+export const traffic = {
+  overview: () => api.get('/traffic/overview'),
+  clients: (id: string) => api.get(`/traffic/clients/${id}`),
+  nodes: (id: string) => api.get(`/traffic/nodes/${id}`),
+}
+
+export const system = {
+  info: () => api.get('/system/info'),
+  password: (password: string) => api.put('/system/password', { password }),
+  backup: () => api.post('/system/backup'),
 }
 
 export default api
