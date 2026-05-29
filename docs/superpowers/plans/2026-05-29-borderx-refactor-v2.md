@@ -3123,3 +3123,31 @@ git commit -m "feat: 一键安装脚本 — Linux systemd + Windows Service + Do
 **2. 占位符扫描：** `<release-url>` 是唯一占位符，实际发布时填写。所有代码步骤均包含真实代码。
 
 **3. 类型一致性：** Go model 定义与 SQLite 迁移一致；API handler 返回字段与 React TypeScript 接口一致；`client_inbounds.is_visible` 贯穿前后端。
+
+---
+
+## 实现状态
+
+**执行时间：** 2026-05-29 | **方式：** 子代理驱动开发 | **提交数：** 25 (v2)
+
+### 各阶段完成情况
+
+| Phase | 任务 | 状态 |
+|---|---|---|
+| 1. 核心骨架 | 任务 1-7 | 已完成 |
+| 2. 单机模式 | 任务 8-15 | 已完成 |
+| 3. 多节点模式 | 任务 16-17 | 已完成 |
+| 4. 打磨 | 任务 18-19 | 已完成 |
+
+### 与计划的偏差
+
+| 项目 | 计划 | 实际 | 原因 |
+|---|---|---|---|
+| 迁移路径 | `server/migrations/` | `server/internal/store/migrations/` | Go embed 不允许 `..` |
+| xray/service.go | 保留 | 删除，功能合并到 config.go `reloadXray()` | platform.go 已覆盖跨平台 |
+| MUI 版本 | v6 | v9 | npm 默认最新 |
+| deploy/config.yml | — | 删除 | v2 支持无配置文件启动 |
+| deploy/panel.service | — | 删除 | 整合到 install.sh |
+| .gitignore | 仅排除 docs/superpowers | 扩展排除 *.exe + dist + data | 编译产物清理 |
+| 新增 commit | — | 8549f22 (chore), 785380e (chore), e5de455 (fix) | 实现后清理和修复 |
+| GitHub push | 计划内 | 待定（网络不通） | GitHub.com 连接超时 |

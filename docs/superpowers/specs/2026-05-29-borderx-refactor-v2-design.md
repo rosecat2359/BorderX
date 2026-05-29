@@ -470,3 +470,28 @@ BorderX/
 | 支付系统 | 支付宝 | 砍掉 |
 | 平台支持 | 仅 Linux | Windows + Linux (amd64/arm64) |
 | 开发周期 | 6 周 | 4.5 周 |
+
+## 实现记录（2026-05-29）
+
+以下是在实际实现过程中与设计规格的差异：
+
+| 项目 | 设计规格 | 实际实现 | 原因 |
+|---|---|---|---|
+| 迁移文件位置 | `server/migrations/` | `server/internal/store/migrations/` | Go embed 不允许 `..` 路径 |
+| 配置示例文件 | `deploy/config.yml` | 已删除 | v2 无配置文件即可启动（SQLite + 随机JWT密钥） |
+| xray/service.go | 保留 | 已删除，功能合并到 config.go `reloadXray()` | 避免代码重复，platform.go 已覆盖跨平台 |
+| 前端 UI 库 | MUI v6 | MUI v9（最新版） | npm install 默认安装最新版 |
+| deploy/panel.service | 保留 | 已删除 | 功能已整合进 install.sh |
+| .gitignore | 仅排除 docs/superpowers | 扩展排除 *.exe + dist + data | 编译产物不应入库 |
+
+### 新增文件（超出设计规格）
+
+- `server/internal/xray/config.go` — 追加 `reloadXray()` 函数（替代 service.go）
+- `.gitignore` — 扩展排除规则
+
+### 删除文件（超出设计规格）
+
+- `server/internal/xray/service.go` — 平台抽象已由 platform.go 覆盖
+- `deploy/config.yml` — v2 支持无配置文件运行
+- `deploy/panel.service` — 已整合到 install.sh
+- `server/borderx-panel` / `server/borderx-panel.exe` / `server/panel.exe` — 编译产物，已 gitignore
