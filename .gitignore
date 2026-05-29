@@ -7,4 +7,5 @@ server/web/dist/
 web/dist/
 node_modules/
 data/
+dist/
 
