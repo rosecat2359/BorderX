@@ -13,9 +13,8 @@ var (
 )
 
 type Claims struct {
-	UserID string `json:"user_id"`
-	Email  string `json:"email"`
-	Role   string `json:"role"`
+	UserID  string `json:"user_id"`
+	IsAdmin bool   `json:"is_admin"`
 	jwt.RegisteredClaims
 }
 
@@ -28,20 +27,10 @@ func NewJWTManager(secret string, expireHour int) *JWTManager {
 	return &JWTManager{secret: []byte(secret), expireHour: expireHour}
 }
 
-func (m *JWTManager) GenerateUserToken(userID, email string) (string, error) {
-	return m.generate(userID, email, "user")
-}
-
-func (m *JWTManager) GenerateAdminToken(adminID, username, role string) (string, error) {
-	return m.generate(adminID, username, role)
-}
-
-// generate creates a signed JWT with HS256
-func (m *JWTManager) generate(id, name, role string) (string, error) {
+func (m *JWTManager) GenerateToken(adminID string) (string, error) {
 	claims := Claims{
-		UserID: id,
-		Email:  name,
-		Role:   role,
+		UserID:  adminID,
+		IsAdmin: true,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(m.expireHour) * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
